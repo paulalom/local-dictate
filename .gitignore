@@ -1,0 +1,23 @@
+**/bin/
+**/obj/
+target/
+
+# Local binaries, downloaded models, and private audio/text artifacts.
+engines/*
+!engines/.gitkeep
+models/*
+!models/.gitkeep
+recordings/*
+!recordings/.gitkeep
+transcripts/*
+!transcripts/.gitkeep
+
+.local/
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.ogg
+*.txt
+*.srt
+*.vtt

@@ -1,0 +1,9 @@
+[package]
+name = "local-dictate-cli"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+local-dictate-core = { path = "../local-dictate-core" }
