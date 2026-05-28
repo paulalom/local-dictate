@@ -5,6 +5,9 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
 use crate::TranscriptionEngine;
 
 #[derive(Debug, Clone)]
@@ -111,6 +114,7 @@ impl WhisperCliTranscriptionEngine {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        suppress_child_console(&mut command);
 
         if self.options.no_timestamps {
             command.arg("-nt");
@@ -178,6 +182,19 @@ impl TranscriptionEngine for WhisperCliTranscriptionEngine {
             duration: started.elapsed(),
             engine_name: "whisper-cli",
         })
+    }
+}
+
+fn suppress_child_console(command: &mut Command) {
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    #[cfg(not(windows))]
+    {
+        let _ = command;
     }
 }
 
