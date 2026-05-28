@@ -1,10 +1,25 @@
+mod audio;
 mod config;
+mod hotkey;
+mod text_input;
+mod transcription_assets;
 
 use std::path::PathBuf;
+use std::sync::mpsc;
+use std::thread;
 
+use audio::AudioRecorder;
 use config::{AppConfig, KeywordSwapConfig};
 use eframe::egui;
-use local_dictate_core::{KeywordSwap, PostProcessingSettings};
+use hotkey::{HotkeyEvent, HotkeyMonitor};
+use local_dictate_core::{
+    KeywordSwap, PostProcessingSettings, TranscriptionEngine, TranscriptionRequest,
+    WhisperCliEngineOptions, WhisperCliTranscriptionEngine,
+};
+use transcription_assets::{
+    CUSTOM_ENGINE_ID, CUSTOM_MODEL_ID, ENGINE_OPTIONS, MODEL_OPTIONS, engine_label, model_label,
+    resolve_transcription_assets,
+};
 
 fn main() -> eframe::Result {
     let native_options = eframe::NativeOptions {
@@ -25,6 +40,12 @@ fn main() -> eframe::Result {
 struct SettingsApp {
     config_path: Option<PathBuf>,
     capture_hotkey: String,
+    engine: String,
+    model: String,
+    engine_path: String,
+    model_path: String,
+    language: String,
+    auto_insert: bool,
     swaps: Vec<SwapRow>,
     new_from: String,
     new_to: String,
@@ -32,28 +53,70 @@ struct SettingsApp {
     status: StatusMessage,
     recording_hotkey: bool,
     dirty: bool,
+    hotkey_monitor: Option<HotkeyMonitor>,
+    hotkey_sender: mpsc::Sender<HotkeyEvent>,
+    hotkey_events: mpsc::Receiver<HotkeyEvent>,
+    runtime_events: mpsc::Receiver<RuntimeEvent>,
+    runtime_sender: mpsc::Sender<RuntimeEvent>,
+    recorder: Option<AudioRecorder>,
+    capture_config: Option<AppConfig>,
+    runtime_state: RuntimeState,
 }
 
 impl SettingsApp {
     fn new() -> Self {
+        let (hotkey_sender, hotkey_events) = mpsc::channel();
+        let (runtime_sender, runtime_events) = mpsc::channel();
+
         match config::load_or_default() {
-            Ok(loaded) => Self::from_config(
-                loaded.config,
-                Some(loaded.path),
-                StatusMessage::info("Settings ready"),
-            ),
-            Err(error) => Self::from_config(
-                AppConfig::default(),
-                config::default_config_path().ok(),
-                StatusMessage::error(format!("Using defaults: {error}")),
-            ),
+            Ok(loaded) => {
+                let status = StatusMessage::info("Settings ready");
+                Self::from_config(
+                    loaded.config,
+                    Some(loaded.path),
+                    status,
+                    hotkey_sender,
+                    hotkey_events,
+                    runtime_sender,
+                    runtime_events,
+                )
+            }
+            Err(error) => {
+                let status = StatusMessage::error(format!("Using defaults: {error}"));
+                Self::from_config(
+                    AppConfig::default(),
+                    config::default_config_path().ok(),
+                    status,
+                    hotkey_sender,
+                    hotkey_events,
+                    runtime_sender,
+                    runtime_events,
+                )
+            }
         }
     }
 
-    fn from_config(config: AppConfig, config_path: Option<PathBuf>, status: StatusMessage) -> Self {
-        Self {
+    fn from_config(
+        config: AppConfig,
+        config_path: Option<PathBuf>,
+        status: StatusMessage,
+        hotkey_sender: mpsc::Sender<HotkeyEvent>,
+        hotkey_events: mpsc::Receiver<HotkeyEvent>,
+        runtime_sender: mpsc::Sender<RuntimeEvent>,
+        runtime_events: mpsc::Receiver<RuntimeEvent>,
+    ) -> Self {
+        let hotkey_monitor =
+            HotkeyMonitor::start(&config.capture_hotkey, hotkey_sender.clone()).ok();
+
+        let mut app = Self {
             config_path,
             capture_hotkey: config.capture_hotkey,
+            engine: config.engine,
+            model: config.model,
+            engine_path: config.engine_path,
+            model_path: config.model_path,
+            language: config.language,
+            auto_insert: config.auto_insert,
             swaps: config
                 .keyword_swaps
                 .into_iter()
@@ -65,7 +128,21 @@ impl SettingsApp {
             status,
             recording_hotkey: false,
             dirty: false,
+            hotkey_monitor,
+            hotkey_sender,
+            hotkey_events,
+            runtime_events,
+            runtime_sender,
+            recorder: None,
+            capture_config: None,
+            runtime_state: RuntimeState::Idle,
+        };
+
+        if app.hotkey_monitor.is_none() {
+            app.status = StatusMessage::error("Hotkey monitor could not start");
         }
+
+        app
     }
 
     fn mark_dirty(&mut self) {
@@ -91,10 +168,11 @@ impl SettingsApp {
     fn reload(&mut self) {
         match config::load_or_default() {
             Ok(loaded) => {
-                *self = Self::from_config(
+                self.apply_config(
                     loaded.config,
                     Some(loaded.path),
                     StatusMessage::success("Settings reloaded"),
+                    false,
                 );
             }
             Err(error) => {
@@ -108,12 +186,12 @@ impl SettingsApp {
             .config_path
             .clone()
             .or_else(|| config::default_config_path().ok());
-        *self = Self::from_config(
+        self.apply_config(
             AppConfig::default(),
             config_path,
             StatusMessage::info("Defaults restored"),
+            true,
         );
-        self.dirty = true;
     }
 
     fn save(&mut self) {
@@ -126,9 +204,54 @@ impl SettingsApp {
                 self.config_path = Some(path.clone());
                 self.status = StatusMessage::success(format!("Saved to {}", path.display()));
                 self.dirty = false;
+                self.update_hotkey_monitor(&config.capture_hotkey);
             }
             Err(error) => {
                 self.status = StatusMessage::error(format!("Save failed: {error}"));
+            }
+        }
+    }
+
+    fn apply_config(
+        &mut self,
+        config: AppConfig,
+        config_path: Option<PathBuf>,
+        status: StatusMessage,
+        dirty: bool,
+    ) {
+        self.config_path = config_path;
+        self.capture_hotkey = config.capture_hotkey;
+        self.engine = config.engine;
+        self.model = config.model;
+        self.engine_path = config.engine_path;
+        self.model_path = config.model_path;
+        self.language = config.language;
+        self.auto_insert = config.auto_insert;
+        self.swaps = config
+            .keyword_swaps
+            .into_iter()
+            .map(SwapRow::from)
+            .collect();
+        self.status = status;
+        self.recording_hotkey = false;
+        self.dirty = dirty;
+        self.update_hotkey_monitor(&self.capture_hotkey.clone());
+    }
+
+    fn update_hotkey_monitor(&mut self, hotkey: &str) {
+        if let Some(monitor) = &self.hotkey_monitor
+            && monitor.update_hotkey(hotkey).is_ok()
+        {
+            return;
+        }
+
+        match HotkeyMonitor::start(hotkey, self.hotkey_sender.clone()) {
+            Ok(monitor) => {
+                self.hotkey_monitor = Some(monitor);
+            }
+            Err(error) => {
+                self.status = StatusMessage::error(format!("Hotkey disabled: {error}"));
+                self.hotkey_monitor = None;
             }
         }
     }
@@ -159,6 +282,12 @@ impl SettingsApp {
 
         let config = AppConfig {
             capture_hotkey,
+            engine: self.engine.trim().to_string(),
+            model: self.model.trim().to_string(),
+            engine_path: self.engine_path.trim().to_string(),
+            model_path: self.model_path.trim().to_string(),
+            language: self.language.trim().to_string(),
+            auto_insert: self.auto_insert,
             keyword_swaps,
         };
 
@@ -178,6 +307,158 @@ impl SettingsApp {
             .collect::<Vec<_>>();
 
         PostProcessingSettings::new(swaps).apply(&self.preview_input)
+    }
+
+    fn poll_hotkey_events(&mut self) {
+        while let Ok(event) = self.hotkey_events.try_recv() {
+            if self.recording_hotkey {
+                continue;
+            }
+
+            match event {
+                HotkeyEvent::Pressed => self.begin_capture(),
+                HotkeyEvent::Released => self.finish_capture(),
+            }
+        }
+    }
+
+    fn poll_runtime_events(&mut self) {
+        while let Ok(event) = self.runtime_events.try_recv() {
+            match event {
+                RuntimeEvent::Inserted => {
+                    self.runtime_state = RuntimeState::Idle;
+                    self.status = StatusMessage::success("Inserted dictation");
+                }
+                RuntimeEvent::NoText => {
+                    self.runtime_state = RuntimeState::Idle;
+                    self.status = StatusMessage::info("No dictation detected");
+                }
+                RuntimeEvent::ProcessedWithoutInsert => {
+                    self.runtime_state = RuntimeState::Idle;
+                    self.status = StatusMessage::success("Processed dictation");
+                }
+                RuntimeEvent::Failed(error) => {
+                    self.runtime_state = RuntimeState::Idle;
+                    self.status = StatusMessage::error(error);
+                }
+            }
+        }
+    }
+
+    fn begin_capture(&mut self) {
+        if self.runtime_state != RuntimeState::Idle {
+            return;
+        }
+
+        let Ok(config) = self.current_config() else {
+            return;
+        };
+
+        if let Err(error) = resolve_transcription_assets(
+            &config.engine,
+            &config.model,
+            &config.engine_path,
+            &config.model_path,
+        ) {
+            self.status = StatusMessage::error(error.to_string());
+            return;
+        }
+
+        match AudioRecorder::start() {
+            Ok(recorder) => {
+                self.recorder = Some(recorder);
+                self.capture_config = Some(config);
+                self.runtime_state = RuntimeState::Capturing;
+                self.status = StatusMessage::info("Capturing");
+            }
+            Err(error) => {
+                self.status = StatusMessage::error(format!("Capture failed: {error}"));
+            }
+        }
+    }
+
+    fn finish_capture(&mut self) {
+        if self.runtime_state != RuntimeState::Capturing {
+            return;
+        }
+
+        let Some(recorder) = self.recorder.take() else {
+            self.runtime_state = RuntimeState::Idle;
+            return;
+        };
+
+        match recorder.stop() {
+            Ok(captured_audio) => {
+                let Some(config) = self.capture_config.take() else {
+                    self.runtime_state = RuntimeState::Idle;
+                    self.status = StatusMessage::error("Missing capture settings");
+                    return;
+                };
+
+                self.runtime_state = RuntimeState::Processing;
+                self.status = StatusMessage::info("Processing dictation");
+                self.process_capture(captured_audio, config);
+            }
+            Err(error) => {
+                self.runtime_state = RuntimeState::Idle;
+                self.capture_config = None;
+                self.status = StatusMessage::error(format!("Capture failed: {error}"));
+            }
+        }
+    }
+
+    fn process_capture(&self, captured_audio: audio::CapturedAudio, config: AppConfig) {
+        let sender = self.runtime_sender.clone();
+
+        thread::spawn(move || {
+            let event = process_capture(captured_audio, config);
+            let _ = sender.send(event);
+        });
+    }
+
+    fn overlay(&self, context: &egui::Context) {
+        let label = match self.runtime_state {
+            RuntimeState::Capturing => "Capturing",
+            RuntimeState::Processing => "Processing",
+            RuntimeState::Idle => return,
+        };
+        let label = label.to_string();
+
+        context.show_viewport_deferred(
+            egui::ViewportId::from_hash_of("capture-overlay"),
+            egui::ViewportBuilder::default()
+                .with_title("Local Dictate Capture")
+                .with_inner_size([260.0, 72.0])
+                .with_resizable(false)
+                .with_decorations(false)
+                .with_transparent(true)
+                .with_always_on_top()
+                .with_mouse_passthrough(true)
+                .with_taskbar(false),
+            move |ui, _class| {
+                let rect = ui.max_rect();
+                let painter = ui.painter();
+                let pill = egui::Rect::from_center_size(rect.center(), egui::vec2(220.0, 48.0));
+
+                painter.rect_filled(
+                    pill,
+                    egui::CornerRadius::same(8),
+                    egui::Color32::from_rgba_unmultiplied(24, 28, 32, 232),
+                );
+                painter.circle_filled(
+                    pill.left_center() + egui::vec2(24.0, 0.0),
+                    6.0,
+                    egui::Color32::from_rgb(222, 58, 64),
+                );
+                painter.text(
+                    pill.center() + egui::vec2(12.0, 0.0),
+                    egui::Align2::CENTER_CENTER,
+                    label.as_str(),
+                    egui::TextStyle::Button.resolve(ui.style()),
+                    egui::Color32::WHITE,
+                );
+            },
+        );
     }
 
     fn record_hotkey_from_events(&mut self, context: &egui::Context) {
@@ -248,6 +529,107 @@ impl SettingsApp {
                 };
             }
         });
+    }
+
+    fn engine_section(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Transcription");
+
+        egui::Grid::new("engine_settings_grid")
+            .num_columns(2)
+            .spacing([12.0, 8.0])
+            .show(ui, |ui| {
+                ui.label("Engine");
+                let selected_engine = engine_label(&self.engine);
+                let mut engine_changed = false;
+                egui::ComboBox::from_id_salt("transcription_engine")
+                    .selected_text(selected_engine)
+                    .width(ui.available_width())
+                    .show_ui(ui, |ui| {
+                        for option in ENGINE_OPTIONS {
+                            engine_changed |= ui
+                                .selectable_value(
+                                    &mut self.engine,
+                                    option.id.to_string(),
+                                    option.label,
+                                )
+                                .changed();
+                        }
+                    });
+                if engine_changed {
+                    self.mark_dirty();
+                }
+                ui.end_row();
+
+                ui.label("Model");
+                let selected_model = model_label(&self.model);
+                let mut model_changed = false;
+                egui::ComboBox::from_id_salt("transcription_model")
+                    .selected_text(selected_model)
+                    .width(ui.available_width())
+                    .show_ui(ui, |ui| {
+                        for option in MODEL_OPTIONS {
+                            model_changed |= ui
+                                .selectable_value(
+                                    &mut self.model,
+                                    option.id.to_string(),
+                                    option.label,
+                                )
+                                .changed();
+                        }
+                    });
+                if model_changed {
+                    self.mark_dirty();
+                }
+                ui.end_row();
+
+                if self.engine == CUSTOM_ENGINE_ID || !self.engine_path.trim().is_empty() {
+                    ui.label("Engine path");
+                    if ui
+                        .add_sized(
+                            [ui.available_width(), 24.0],
+                            egui::TextEdit::singleline(&mut self.engine_path)
+                                .hint_text("engines/whisper-cli.exe"),
+                        )
+                        .changed()
+                    {
+                        self.mark_dirty();
+                    }
+                    ui.end_row();
+                }
+
+                if self.model == CUSTOM_MODEL_ID || !self.model_path.trim().is_empty() {
+                    ui.label("Model path");
+                    if ui
+                        .add_sized(
+                            [ui.available_width(), 24.0],
+                            egui::TextEdit::singleline(&mut self.model_path)
+                                .hint_text("models/ggml-base.en.bin"),
+                        )
+                        .changed()
+                    {
+                        self.mark_dirty();
+                    }
+                    ui.end_row();
+                }
+
+                ui.label("Language");
+                if ui
+                    .add_sized(
+                        [160.0, 24.0],
+                        egui::TextEdit::singleline(&mut self.language),
+                    )
+                    .changed()
+                {
+                    self.mark_dirty();
+                }
+                ui.end_row();
+
+                ui.label("Insert");
+                if ui.checkbox(&mut self.auto_insert, "Automatic").changed() {
+                    self.mark_dirty();
+                }
+                ui.end_row();
+            });
     }
 
     fn swaps_section(&mut self, ui: &mut egui::Ui) {
@@ -347,7 +729,13 @@ impl SettingsApp {
 }
 
 impl eframe::App for SettingsApp {
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        egui::Color32::TRANSPARENT.to_normalized_gamma_f32()
+    }
+
     fn logic(&mut self, context: &egui::Context, _frame: &mut eframe::Frame) {
+        self.poll_hotkey_events();
+        self.poll_runtime_events();
         self.record_hotkey_from_events(context);
 
         if context.input_mut(|input| {
@@ -361,11 +749,16 @@ impl eframe::App for SettingsApp {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.overlay(ui.ctx());
+
         egui::Frame::central_panel(ui.style()).show(ui, |ui| {
             self.top_bar(ui);
 
             ui.add_space(12.0);
             self.hotkey_section(ui);
+
+            ui.separator();
+            self.engine_section(ui);
 
             ui.separator();
             self.swaps_section(ui);
@@ -441,6 +834,69 @@ enum StatusKind {
     Error,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RuntimeState {
+    Idle,
+    Capturing,
+    Processing,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RuntimeEvent {
+    Inserted,
+    NoText,
+    ProcessedWithoutInsert,
+    Failed(String),
+}
+
+fn process_capture(captured_audio: audio::CapturedAudio, config: AppConfig) -> RuntimeEvent {
+    match process_capture_inner(captured_audio, config) {
+        Ok(event) => event,
+        Err(error) => RuntimeEvent::Failed(error),
+    }
+}
+
+fn process_capture_inner(
+    captured_audio: audio::CapturedAudio,
+    config: AppConfig,
+) -> Result<RuntimeEvent, String> {
+    let settings = config.to_settings().map_err(|error| error.to_string())?;
+    let assets = resolve_transcription_assets(
+        &config.engine,
+        &config.model,
+        &config.engine_path,
+        &config.model_path,
+    )
+    .map_err(|error| error.to_string())?;
+
+    let engine = WhisperCliTranscriptionEngine::new(WhisperCliEngineOptions::new(
+        assets.engine_path,
+        assets.model_path,
+    ));
+    let mut request = TranscriptionRequest::new(captured_audio.path().to_path_buf());
+
+    if !config.language.trim().is_empty() {
+        request = request.with_language(config.language.trim().to_string());
+    }
+
+    let result = engine
+        .transcribe(&request)
+        .map_err(|error| error.to_string())?;
+    let text = settings.post_processing().apply(&result.text);
+    let text = text.trim();
+
+    if text.is_empty() {
+        return Ok(RuntimeEvent::NoText);
+    }
+
+    if config.auto_insert {
+        text_input::insert_text(text).map_err(|error| error.to_string())?;
+        Ok(RuntimeEvent::Inserted)
+    } else {
+        Ok(RuntimeEvent::ProcessedWithoutInsert)
+    }
+}
+
 fn format_hotkey(modifiers: egui::Modifiers, key: egui::Key) -> String {
     let mut parts = Vec::new();
 
@@ -449,7 +905,7 @@ fn format_hotkey(modifiers: egui::Modifiers, key: egui::Key) -> String {
     }
 
     if modifiers.alt {
-        parts.push("Alt".to_string());
+        parts.push(alt_key_label().to_string());
     }
 
     if modifiers.shift {
@@ -462,4 +918,14 @@ fn format_hotkey(modifiers: egui::Modifiers, key: egui::Key) -> String {
 
     parts.push(format!("{key:?}"));
     parts.join("+")
+}
+
+#[cfg(target_os = "macos")]
+fn alt_key_label() -> &'static str {
+    "Option"
+}
+
+#[cfg(not(target_os = "macos"))]
+fn alt_key_label() -> &'static str {
+    "Alt"
 }

@@ -9,8 +9,8 @@ The project is intentionally separate from `whisper.cpp`. `whisper.cpp` is the i
 - `crates/local-dictate-core`: engine contracts and the first `whisper-cli` adapter.
 - `crates/local-dictate-cli`: a small smoke-test CLI for transcribing an existing audio file.
 - `crates/local-dictate-ui`: a native desktop settings app for Windows, macOS, and Linux.
-- `engines/`: local engine binaries such as `whisper-cli.exe`; ignored by Git.
-- `models/`: local `ggml` model files; ignored by Git.
+- `engines/`: bundled or locally installed `whisper.cpp` engine binaries such as `whisper-cli.exe`; ignored by Git.
+- `models/`: bundled or locally installed `ggml` model files; ignored by Git.
 - `recordings/` and `transcripts/`: local private artifacts; ignored by Git.
 
 ## Why Not Fork `whisper.cpp`?
@@ -32,7 +32,7 @@ cargo run -p local-dictate-cli -- `
   --model .\models\ggml-base.en.bin `
   --audio .\recordings\sample.wav `
   --language en `
-  --capture-hotkey Ctrl+Shift+D `
+  --capture-hotkey Win+Alt `
   --swap peers=PRs
 ```
 
@@ -41,9 +41,41 @@ case-insensitively, so `--swap peers=PRs` changes `peers` or `Peers` to `PRs` wi
 words like `appears`.
 
 `--capture-hotkey` validates the push-to-talk hotkey setting that the live voice capture surface will
-use. It defaults to `Ctrl+Alt+Space`.
+use. It defaults to `Win+Alt` on Windows, `Cmd+Option` on macOS, and `Super+Alt` on Linux and
+other Unix-like systems.
 
 No network access is required at runtime by this adapter.
+
+## Bundled Defaults
+
+The settings app defaults to the bundled `whisper.cpp` engine and the `base.en`
+Whisper model preset. Custom engine and model paths still work as advanced
+overrides, so developers can test GPU builds, newer upstream builds, or custom
+`ggml` models without changing the app contract.
+
+For Windows development and release prep, install the default local assets with:
+
+```powershell
+.\scripts\install-whisper-assets.ps1
+```
+
+If local PowerShell script execution is disabled, run it as:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-whisper-assets.ps1
+```
+
+That script downloads the pinned `whisper.cpp` Windows binary release into
+`engines/` and the `ggml-base.en.bin` model into `models/`. The model download is
+validated against the upstream SHA-1 listed by `whisper.cpp`. On macOS and Linux,
+place a compatible `whisper-cli` binary at `engines/whisper-cli` and the selected
+model at `models/ggml-<model>.bin`.
+
+Packaged app builds should include:
+
+- `engines/whisper-cli.exe` on Windows, or `engines/whisper-cli` on macOS/Linux.
+- `models/ggml-base.en.bin` for the default English model.
+- `THIRD_PARTY_NOTICES.md` with the app distribution.
 
 ## Settings App
 
@@ -62,7 +94,14 @@ On this Windows development setup, the helper script also works:
 The app saves `settings.toml` in the operating system's config directory. It currently configures:
 
 - Voice capture hotkey.
+- Whisper engine, model preset, optional advanced paths, and language.
 - Post-processing keyword swaps.
+
+When the hotkey is held, the app captures microphone audio and shows a small always-on-top overlay.
+When the hotkey is released, it transcribes the capture, applies keyword swaps, and inserts the
+processed text into the focused text field. Captured audio is written only to short-lived temporary
+storage for `whisper-cli` processing and is deleted immediately after transcription completes. The
+app does not save transcript files or display dictated text in the UI.
 
 Build a standalone binary for the current OS:
 
@@ -85,3 +124,9 @@ On Windows, if Cargo cannot find the MSVC linker environment, run through the he
 ```powershell
 .\scripts\cargo-dev.cmd run -p local-dictate-cli -- --help
 ```
+
+## Third-Party Credits
+
+`local-dictate` uses `whisper.cpp` as the local inference engine and OpenAI
+Whisper model weights converted to `ggml` format. See `THIRD_PARTY_NOTICES.md`
+for license notices and attribution.

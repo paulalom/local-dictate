@@ -6,8 +6,13 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+cpal = "0.17.3"
+device_query = "4.0.1"
 directories = "6.0.0"
 eframe = "0.34.3"
+enigo = "0.6.1"
+hound = "3.5.1"
 local-dictate-core = { path = "../local-dictate-core" }
 serde = { version = "1.0.228", features = ["derive"] }
+tempfile = "3.27.0"
 toml = "1.1.2"

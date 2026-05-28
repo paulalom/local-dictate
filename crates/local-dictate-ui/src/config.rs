@@ -6,12 +6,20 @@ use directories::ProjectDirs;
 use local_dictate_core::{CaptureHotkey, DictationSettings, KeywordSwap, PostProcessingSettings};
 use serde::{Deserialize, Serialize};
 
+use crate::transcription_assets::{DEFAULT_ENGINE_ID, DEFAULT_MODEL_ID};
+
 const CONFIG_FILE_NAME: &str = "settings.toml";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppConfig {
     pub capture_hotkey: String,
+    pub engine: String,
+    pub model: String,
+    pub engine_path: String,
+    pub model_path: String,
+    pub language: String,
+    pub auto_insert: bool,
     pub keyword_swaps: Vec<KeywordSwapConfig>,
 }
 
@@ -45,6 +53,12 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             capture_hotkey: CaptureHotkey::default().to_string(),
+            engine: DEFAULT_ENGINE_ID.to_string(),
+            model: DEFAULT_MODEL_ID.to_string(),
+            engine_path: String::new(),
+            model_path: String::new(),
+            language: "en".to_string(),
+            auto_insert: true,
             keyword_swaps: Vec::new(),
         }
     }
@@ -168,16 +182,26 @@ impl std::error::Error for ConfigError {}
 #[cfg(test)]
 mod tests {
     use super::{AppConfig, KeywordSwapConfig};
+    use crate::transcription_assets::{DEFAULT_ENGINE_ID, DEFAULT_MODEL_ID};
 
     #[test]
     fn default_config_uses_default_capture_hotkey() {
-        assert_eq!(AppConfig::default().capture_hotkey, "Ctrl+Alt+Space");
+        assert_eq!(
+            AppConfig::default().capture_hotkey,
+            expected_default_capture_hotkey()
+        );
     }
 
     #[test]
     fn converts_to_core_settings() {
         let config = AppConfig {
             capture_hotkey: "Ctrl+Shift+D".to_string(),
+            engine: DEFAULT_ENGINE_ID.to_string(),
+            model: DEFAULT_MODEL_ID.to_string(),
+            engine_path: "engines/whisper-cli.exe".to_string(),
+            model_path: "models/ggml-base.en.bin".to_string(),
+            language: "en".to_string(),
+            auto_insert: true,
             keyword_swaps: vec![KeywordSwapConfig {
                 from: "peers".to_string(),
                 to: "PRs".to_string(),
@@ -197,6 +221,12 @@ mod tests {
     fn rejects_invalid_keyword_swaps() {
         let config = AppConfig {
             capture_hotkey: "Ctrl+Shift+D".to_string(),
+            engine: DEFAULT_ENGINE_ID.to_string(),
+            model: DEFAULT_MODEL_ID.to_string(),
+            engine_path: "engines/whisper-cli.exe".to_string(),
+            model_path: "models/ggml-base.en.bin".to_string(),
+            language: "en".to_string(),
+            auto_insert: true,
             keyword_swaps: vec![KeywordSwapConfig {
                 from: " ".to_string(),
                 to: "PRs".to_string(),
@@ -207,5 +237,50 @@ mod tests {
             config.to_settings().unwrap_err().to_string(),
             "keyword swap 1 is invalid: keyword swap source cannot be empty"
         );
+    }
+
+    #[test]
+    fn defaults_to_bundled_whisper_cpp_and_base_english() {
+        let config = AppConfig::default();
+
+        assert_eq!(config.engine, "bundled-whisper-cpp");
+        assert_eq!(config.model, "base.en");
+        assert!(config.engine_path.is_empty());
+        assert!(config.model_path.is_empty());
+    }
+
+    #[test]
+    fn loads_legacy_configs_without_engine_or_model_ids() {
+        let config: AppConfig = toml::from_str(
+            r#"
+capture_hotkey = "Ctrl+Shift+D"
+engine_path = "engines/whisper-cli.exe"
+model_path = "models/ggml-base.en.bin"
+language = "en"
+auto_insert = true
+keyword_swaps = []
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(config.engine, "bundled-whisper-cpp");
+        assert_eq!(config.model, "base.en");
+        assert_eq!(config.engine_path, "engines/whisper-cli.exe");
+        assert_eq!(config.model_path, "models/ggml-base.en.bin");
+    }
+
+    #[cfg(target_os = "windows")]
+    fn expected_default_capture_hotkey() -> &'static str {
+        "Win+Alt"
+    }
+
+    #[cfg(target_os = "macos")]
+    fn expected_default_capture_hotkey() -> &'static str {
+        "Cmd+Option"
+    }
+
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    fn expected_default_capture_hotkey() -> &'static str {
+        "Super+Alt"
     }
 }

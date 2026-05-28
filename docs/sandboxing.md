@@ -4,11 +4,11 @@
 
 Runtime requirements for the first adapter:
 
-- Read access to the selected `whisper-cli` binary.
-- Read access to the selected `ggml` model file.
+- Read access to the bundled or selected `whisper-cli` binary.
+- Read access to the bundled or selected `ggml` model file.
 - Read access to the audio file being transcribed.
 - No shell execution; process arguments are passed directly through `ProcessStartInfo.ArgumentList`.
-- No runtime model downloads.
+- No runtime model downloads. Model and engine installation happens before runtime.
 
 Future live dictation requirements:
 
@@ -18,8 +18,8 @@ Future live dictation requirements:
 
 Recommended privacy defaults:
 
-- Keep downloaded engines in `engines/`.
-- Keep downloaded models in `models/`.
+- Keep bundled or downloaded engines in `engines/`.
+- Keep bundled or downloaded models in `models/`.
 - Keep recordings and transcripts out of Git.
 - Disable cloud fallback, sync, telemetry, crash uploads, and auto-update checks unless the user explicitly opts in.
 - Add outbound firewall deny rules for both the wrapper executable and `whisper-cli` when testing sensitive workflows.

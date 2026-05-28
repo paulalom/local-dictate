@@ -2,7 +2,14 @@ use std::fmt;
 
 use crate::PostProcessingSettings;
 
-const DEFAULT_CAPTURE_HOTKEY: &str = "Ctrl+Alt+Space";
+#[cfg(target_os = "windows")]
+const DEFAULT_CAPTURE_HOTKEY: &str = "Win+Alt";
+
+#[cfg(target_os = "macos")]
+const DEFAULT_CAPTURE_HOTKEY: &str = "Cmd+Option";
+
+#[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+const DEFAULT_CAPTURE_HOTKEY: &str = "Super+Alt";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DictationSettings {
@@ -123,7 +130,7 @@ mod tests {
     fn defaults_capture_hotkey() {
         assert_eq!(
             DictationSettings::default().capture_hotkey().as_str(),
-            "Ctrl+Alt+Space"
+            expected_default_capture_hotkey()
         );
     }
 
@@ -154,5 +161,20 @@ mod tests {
             CaptureHotkey::parse("Ctrl++Space").unwrap_err().to_string(),
             "capture hotkey contains an empty key part: Ctrl++Space"
         );
+    }
+
+    #[cfg(target_os = "windows")]
+    fn expected_default_capture_hotkey() -> &'static str {
+        "Win+Alt"
+    }
+
+    #[cfg(target_os = "macos")]
+    fn expected_default_capture_hotkey() -> &'static str {
+        "Cmd+Option"
+    }
+
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    fn expected_default_capture_hotkey() -> &'static str {
+        "Super+Alt"
     }
 }
