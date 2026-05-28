@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Local Dictate
+Comment=Local-first push-to-talk dictation
+Exec=local-dictate-ui
+Icon=local-dictate
+Terminal=false
+Categories=Utility;Accessibility;

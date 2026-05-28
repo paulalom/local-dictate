@@ -4,6 +4,10 @@ Local-first dictation wrapper for `whisper.cpp`.
 
 The project is intentionally separate from `whisper.cpp`. `whisper.cpp` is the inference engine; this repo owns the product layer around it: microphone capture, push-to-talk, local-only configuration, transcript handling, and text insertion.
 
+One of the core guiding principles is to store as little as possible, for as
+little time as possible, and never send anything from the running app over the
+network. See `docs/privacy-principles.md` for the project privacy boundary.
+
 ## Current Shape
 
 - `crates/local-dictate-core`: engine contracts and the first `whisper-cli` adapter.
@@ -102,6 +106,15 @@ When the hotkey is released, it transcribes the capture, applies keyword swaps, 
 processed text into the focused text field. Captured audio is written only to short-lived temporary
 storage for `whisper-cli` processing and is deleted immediately after transcription completes. The
 app does not save transcript files or display dictated text in the UI.
+
+On Windows, the UI app runs without a console window. Closing or minimizing the
+settings window keeps dictation running from the system tray; use the tray menu
+to show settings again or exit completely. On macOS, ship the UI binary in an
+`.app` bundle so it opens as a normal app with a menu bar status item instead of
+a Terminal session. On Linux, launch from a `.desktop` entry with
+`Terminal=false`; tray support uses the standard GTK/AppIndicator stack and may
+require the matching system packages for the desktop environment. Starter
+packaging templates live in `packaging/`.
 
 Build a standalone binary for the current OS:
 

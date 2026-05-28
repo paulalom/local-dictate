@@ -2,6 +2,10 @@
 
 `local-dictate` should work with outbound network access blocked.
 
+The privacy baseline is documented in `docs/privacy-principles.md`: store as
+little as possible, for as little time as possible, and never send anything from
+the running app over the network.
+
 Runtime requirements for the first adapter:
 
 - Read access to the bundled or selected `whisper-cli` binary.

@@ -1,3 +1,6 @@
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+
+mod app_tray;
 mod audio;
 mod config;
 mod focus;
@@ -10,6 +13,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
+use app_tray::{AppTray, TrayAction};
 use audio::AudioRecorder;
 use config::{AppConfig, KeywordSwapConfig};
 use eframe::egui;
@@ -63,6 +67,9 @@ struct SettingsApp {
     recorder: Option<AudioRecorder>,
     capture_context: Option<CaptureContext>,
     runtime_state: RuntimeState,
+    tray: Option<AppTray>,
+    window_hidden: bool,
+    exit_requested: bool,
 }
 
 impl SettingsApp {
@@ -110,6 +117,9 @@ impl SettingsApp {
         let hotkey_monitor =
             HotkeyMonitor::start(&config.capture_hotkey, hotkey_sender.clone()).ok();
 
+        let tray = AppTray::new();
+        let tray_status = tray.as_ref().err().cloned();
+
         let mut app = Self {
             config_path,
             capture_hotkey: config.capture_hotkey,
@@ -138,9 +148,14 @@ impl SettingsApp {
             recorder: None,
             capture_context: None,
             runtime_state: RuntimeState::Idle,
+            tray: tray.ok(),
+            window_hidden: false,
+            exit_requested: false,
         };
 
-        if app.hotkey_monitor.is_none() {
+        if let Some(error) = tray_status {
+            app.status = StatusMessage::error(format!("Tray unavailable: {error}"));
+        } else if app.hotkey_monitor.is_none() {
             app.status = StatusMessage::error("Hotkey monitor could not start");
         }
 
@@ -345,6 +360,51 @@ impl SettingsApp {
                 }
             }
         }
+    }
+
+    fn poll_tray_events(&mut self, context: &egui::Context) {
+        let Some(tray) = &self.tray else {
+            return;
+        };
+
+        match tray.poll_action() {
+            Some(TrayAction::Show) => self.show_window(context),
+            Some(TrayAction::Exit) => self.exit_requested = true,
+            None => {}
+        }
+    }
+
+    fn handle_window_lifecycle(&mut self, context: &egui::Context) {
+        if self.exit_requested {
+            context.send_viewport_cmd(egui::ViewportCommand::Close);
+            return;
+        }
+
+        let close_requested = context.input(|input| input.viewport().close_requested());
+        if close_requested {
+            context.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.hide_window(context);
+            return;
+        }
+
+        let minimized = context.input(|input| input.viewport().minimized == Some(true));
+        if minimized && !self.window_hidden {
+            self.hide_window(context);
+        }
+    }
+
+    fn hide_window(&mut self, context: &egui::Context) {
+        context.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+        context.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        self.window_hidden = true;
+        self.status = StatusMessage::info("Still running in the tray");
+    }
+
+    fn show_window(&mut self, context: &egui::Context) {
+        context.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+        context.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+        context.send_viewport_cmd(egui::ViewportCommand::Focus);
+        self.window_hidden = false;
     }
 
     fn begin_capture(&mut self) {
@@ -745,6 +805,8 @@ impl eframe::App for SettingsApp {
 
     fn logic(&mut self, context: &egui::Context, _frame: &mut eframe::Frame) {
         context.request_repaint_after(Duration::from_millis(25));
+        self.poll_tray_events(context);
+        self.handle_window_lifecycle(context);
         self.poll_hotkey_events();
         self.poll_runtime_events();
         self.record_hotkey_from_events(context);
