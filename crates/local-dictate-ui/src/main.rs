@@ -1,5 +1,6 @@
 mod audio;
 mod config;
+mod focus;
 mod hotkey;
 mod text_input;
 mod transcription_assets;
@@ -7,6 +8,7 @@ mod transcription_assets;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
+use std::time::Duration;
 
 use audio::AudioRecorder;
 use config::{AppConfig, KeywordSwapConfig};
@@ -59,7 +61,7 @@ struct SettingsApp {
     runtime_events: mpsc::Receiver<RuntimeEvent>,
     runtime_sender: mpsc::Sender<RuntimeEvent>,
     recorder: Option<AudioRecorder>,
-    capture_config: Option<AppConfig>,
+    capture_context: Option<CaptureContext>,
     runtime_state: RuntimeState,
 }
 
@@ -134,7 +136,7 @@ impl SettingsApp {
             runtime_events,
             runtime_sender,
             recorder: None,
-            capture_config: None,
+            capture_context: None,
             runtime_state: RuntimeState::Idle,
         };
 
@@ -366,8 +368,12 @@ impl SettingsApp {
 
         match AudioRecorder::start() {
             Ok(recorder) => {
+                let focus_target = focus::current_focus_target();
                 self.recorder = Some(recorder);
-                self.capture_config = Some(config);
+                self.capture_context = Some(CaptureContext {
+                    config,
+                    focus_target,
+                });
                 self.runtime_state = RuntimeState::Capturing;
                 self.status = StatusMessage::info("Capturing");
             }
@@ -389,7 +395,7 @@ impl SettingsApp {
 
         match recorder.stop() {
             Ok(captured_audio) => {
-                let Some(config) = self.capture_config.take() else {
+                let Some(capture_context) = self.capture_context.take() else {
                     self.runtime_state = RuntimeState::Idle;
                     self.status = StatusMessage::error("Missing capture settings");
                     return;
@@ -397,21 +403,25 @@ impl SettingsApp {
 
                 self.runtime_state = RuntimeState::Processing;
                 self.status = StatusMessage::info("Processing dictation");
-                self.process_capture(captured_audio, config);
+                self.process_capture(captured_audio, capture_context);
             }
             Err(error) => {
                 self.runtime_state = RuntimeState::Idle;
-                self.capture_config = None;
+                self.capture_context = None;
                 self.status = StatusMessage::error(format!("Capture failed: {error}"));
             }
         }
     }
 
-    fn process_capture(&self, captured_audio: audio::CapturedAudio, config: AppConfig) {
+    fn process_capture(
+        &self,
+        captured_audio: audio::CapturedAudio,
+        capture_context: CaptureContext,
+    ) {
         let sender = self.runtime_sender.clone();
 
         thread::spawn(move || {
-            let event = process_capture(captured_audio, config);
+            let event = process_capture(captured_audio, capture_context);
             let _ = sender.send(event);
         });
     }
@@ -734,6 +744,7 @@ impl eframe::App for SettingsApp {
     }
 
     fn logic(&mut self, context: &egui::Context, _frame: &mut eframe::Frame) {
+        context.request_repaint_after(Duration::from_millis(25));
         self.poll_hotkey_events();
         self.poll_runtime_events();
         self.record_hotkey_from_events(context);
@@ -849,8 +860,17 @@ enum RuntimeEvent {
     Failed(String),
 }
 
-fn process_capture(captured_audio: audio::CapturedAudio, config: AppConfig) -> RuntimeEvent {
-    match process_capture_inner(captured_audio, config) {
+#[derive(Debug, Clone)]
+struct CaptureContext {
+    config: AppConfig,
+    focus_target: Option<focus::FocusTarget>,
+}
+
+fn process_capture(
+    captured_audio: audio::CapturedAudio,
+    capture_context: CaptureContext,
+) -> RuntimeEvent {
+    match process_capture_inner(captured_audio, capture_context) {
         Ok(event) => event,
         Err(error) => RuntimeEvent::Failed(error),
     }
@@ -858,8 +878,9 @@ fn process_capture(captured_audio: audio::CapturedAudio, config: AppConfig) -> R
 
 fn process_capture_inner(
     captured_audio: audio::CapturedAudio,
-    config: AppConfig,
+    capture_context: CaptureContext,
 ) -> Result<RuntimeEvent, String> {
+    let config = capture_context.config;
     let settings = config.to_settings().map_err(|error| error.to_string())?;
     let assets = resolve_transcription_assets(
         &config.engine,
@@ -890,6 +911,7 @@ fn process_capture_inner(
     }
 
     if config.auto_insert {
+        focus::restore_focus(capture_context.focus_target);
         text_input::insert_text(text).map_err(|error| error.to_string())?;
         Ok(RuntimeEvent::Inserted)
     } else {
