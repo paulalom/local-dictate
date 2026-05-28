@@ -52,6 +52,7 @@ struct SettingsApp {
     model_path: String,
     language: String,
     auto_insert: bool,
+    append_trailing_space: bool,
     swaps: Vec<SwapRow>,
     new_from: String,
     new_to: String,
@@ -129,6 +130,7 @@ impl SettingsApp {
             model_path: config.model_path,
             language: config.language,
             auto_insert: config.auto_insert,
+            append_trailing_space: config.append_trailing_space,
             swaps: config
                 .keyword_swaps
                 .into_iter()
@@ -244,6 +246,7 @@ impl SettingsApp {
         self.model_path = config.model_path;
         self.language = config.language;
         self.auto_insert = config.auto_insert;
+        self.append_trailing_space = config.append_trailing_space;
         self.swaps = config
             .keyword_swaps
             .into_iter()
@@ -305,6 +308,7 @@ impl SettingsApp {
             model_path: self.model_path.trim().to_string(),
             language: self.language.trim().to_string(),
             auto_insert: self.auto_insert,
+            append_trailing_space: self.append_trailing_space,
             keyword_swaps,
         };
 
@@ -502,6 +506,7 @@ impl SettingsApp {
                 .with_resizable(false)
                 .with_decorations(false)
                 .with_transparent(true)
+                .with_active(false)
                 .with_always_on_top()
                 .with_mouse_passthrough(true)
                 .with_taskbar(false),
@@ -696,6 +701,15 @@ impl SettingsApp {
 
                 ui.label("Insert");
                 if ui.checkbox(&mut self.auto_insert, "Automatic").changed() {
+                    self.mark_dirty();
+                }
+                ui.end_row();
+
+                ui.label("Spacing");
+                if ui
+                    .checkbox(&mut self.append_trailing_space, "Add trailing space")
+                    .changed()
+                {
                     self.mark_dirty();
                 }
                 ui.end_row();
@@ -974,10 +988,19 @@ fn process_capture_inner(
 
     if config.auto_insert {
         focus::restore_focus(capture_context.focus_target);
-        text_input::insert_text(text).map_err(|error| error.to_string())?;
+        let text = insertion_text(text, config.append_trailing_space);
+        text_input::insert_text(&text).map_err(|error| error.to_string())?;
         Ok(RuntimeEvent::Inserted)
     } else {
         Ok(RuntimeEvent::ProcessedWithoutInsert)
+    }
+}
+
+fn insertion_text(text: &str, append_trailing_space: bool) -> String {
+    if append_trailing_space {
+        format!("{text} ")
+    } else {
+        text.to_string()
     }
 }
 
@@ -1012,4 +1035,19 @@ fn alt_key_label() -> &'static str {
 #[cfg(not(target_os = "macos"))]
 fn alt_key_label() -> &'static str {
     "Alt"
+}
+
+#[cfg(test)]
+mod tests {
+    use super::insertion_text;
+
+    #[test]
+    fn appends_trailing_space_when_enabled() {
+        assert_eq!(insertion_text("First sentence.", true), "First sentence. ");
+    }
+
+    #[test]
+    fn leaves_inserted_text_unchanged_when_spacing_is_disabled() {
+        assert_eq!(insertion_text("First sentence.", false), "First sentence.");
+    }
 }

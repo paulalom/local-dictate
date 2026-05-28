@@ -45,10 +45,14 @@ if (-not $whisperCli) {
     throw "Could not find whisper-cli.exe in $engineZip"
 }
 
-Get-ChildItem -LiteralPath $whisperCli.DirectoryName -File |
+$runtimeFiles = @($whisperCli) + @(
+    Get-ChildItem -LiteralPath $whisperCli.DirectoryName -Filter "*.dll" -File
+)
+
+$runtimeFiles |
     Copy-Item -Destination $engineDir -Force
 
-Write-Host "Installed whisper.cpp engine files to $engineDir"
+Write-Host "Installed whisper.cpp CLI runtime files to $engineDir"
 
 if ($SkipModel) {
     return

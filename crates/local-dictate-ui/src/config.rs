@@ -20,6 +20,8 @@ pub struct AppConfig {
     pub model_path: String,
     pub language: String,
     pub auto_insert: bool,
+    #[serde(default = "default_true")]
+    pub append_trailing_space: bool,
     pub keyword_swaps: Vec<KeywordSwapConfig>,
 }
 
@@ -59,9 +61,14 @@ impl Default for AppConfig {
             model_path: String::new(),
             language: "en".to_string(),
             auto_insert: true,
+            append_trailing_space: true,
             keyword_swaps: Vec::new(),
         }
     }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -202,6 +209,7 @@ mod tests {
             model_path: "models/ggml-base.en.bin".to_string(),
             language: "en".to_string(),
             auto_insert: true,
+            append_trailing_space: true,
             keyword_swaps: vec![KeywordSwapConfig {
                 from: "peers".to_string(),
                 to: "PRs".to_string(),
@@ -227,6 +235,7 @@ mod tests {
             model_path: "models/ggml-base.en.bin".to_string(),
             language: "en".to_string(),
             auto_insert: true,
+            append_trailing_space: true,
             keyword_swaps: vec![KeywordSwapConfig {
                 from: " ".to_string(),
                 to: "PRs".to_string(),
@@ -247,6 +256,7 @@ mod tests {
         assert_eq!(config.model, "base.en");
         assert!(config.engine_path.is_empty());
         assert!(config.model_path.is_empty());
+        assert!(config.append_trailing_space);
     }
 
     #[test]
@@ -265,6 +275,7 @@ keyword_swaps = []
 
         assert_eq!(config.engine, "bundled-whisper-cpp");
         assert_eq!(config.model, "base.en");
+        assert!(config.append_trailing_space);
         assert_eq!(config.engine_path, "engines/whisper-cli.exe");
         assert_eq!(config.model_path, "models/ggml-base.en.bin");
     }

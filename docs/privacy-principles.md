@@ -1,6 +1,6 @@
 # Privacy Principles
 
-`local-dictate` is built around a hard privacy constraint:
+`local-dictate` is built around a runtime privacy goal:
 
 Store as little as possible, for as little time as possible, and never send
 anything from the running app over the network.
@@ -16,8 +16,9 @@ That means:
 - The app does not save dictated text, transcripts, or captured audio.
 - The app does not include cloud fallback, telemetry, analytics, crash uploads,
   sync, or remote transcription.
-- The app does not make runtime network requests.
-- Runtime code must work with outbound network access blocked.
+- Project-owned runtime code does not make network requests.
+- The app should continue to work if outbound network access is blocked by the
+  operating system or release environment.
 
 The local settings file may store user configuration such as hotkeys, selected
 engine/model identifiers, language, automatic insertion, and keyword swaps. It
@@ -27,6 +28,9 @@ The asset installation script is separate from runtime behavior. It may download
 public engine/model assets when a developer or packager explicitly runs it, but
 it must not send or upload microphone audio, transcripts, settings, or other user
 data.
+
+The app does not currently apply OS-level isolation to the selected engine
+binary. See `docs/runtime-network.md` for the current network boundary.
 
 ## Verification Notes
 
@@ -38,4 +42,4 @@ asset installation behavior, verify the privacy boundary:
 - Confirm audio capture still uses temporary storage whose lifetime is bound to
   the capture/transcription flow.
 - Confirm transcription output is not written to disk or displayed in the app.
-- Confirm the app still works without runtime model downloads.
+- Confirm the app still works without runtime engine or model downloads.

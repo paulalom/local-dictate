@@ -6,7 +6,7 @@ Accepted.
 
 ## Context
 
-`whisper.cpp` is a focused speech-to-text inference engine. `local-dictate` needs application behavior around that engine: recording, push-to-talk, voice activity detection policy, text insertion, local artifact handling, sandboxing, and eventually a tray/settings UI.
+`whisper.cpp` is a focused speech-to-text inference engine. `local-dictate` needs application behavior around that engine: recording, push-to-talk, voice activity detection policy, text insertion, local artifact handling, runtime privacy boundaries, and eventually a tray/settings UI.
 
 Combining those responsibilities in a fork would make upstream updates harder and blur the security review surface.
 

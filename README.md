@@ -1,6 +1,6 @@
 # local-dictate
 
-Local-first dictation wrapper for `whisper.cpp`.
+Local, no-network voice dictation that saves nothing.
 
 The project is intentionally separate from `whisper.cpp`. `whisper.cpp` is the inference engine; this repo owns the product layer around it: microphone capture, push-to-talk, local-only configuration, transcript handling, and text insertion.
 
@@ -22,7 +22,7 @@ network. See `docs/privacy-principles.md` for the project privacy boundary.
 Forking makes every app feature compete with upstream ASR engine maintenance. A separate wrapper gives us a cleaner privacy boundary:
 
 - We can pin or swap the engine without rewriting dictation features.
-- We can network-sandbox the wrapper and engine independently.
+- We can review the app-level privacy boundary separately from upstream engine maintenance.
 - We can start with the `whisper-cli` executable, then move to the C API later if latency demands it.
 - Upstream security and performance fixes remain easy to pull.
 
@@ -48,7 +48,9 @@ words like `appears`.
 use. It defaults to `Win+Alt` on Windows, `Cmd+Option` on macOS, and `Super+Alt` on Linux and
 other Unix-like systems.
 
-No network access is required at runtime by this adapter.
+The Rust adapter does not make network requests at runtime; it invokes a local
+engine binary with local model and audio paths. See `docs/runtime-network.md`
+for the current network boundary and the checked `whisper.cpp` engine runtime.
 
 ## Bundled Defaults
 
@@ -69,11 +71,12 @@ If local PowerShell script execution is disabled, run it as:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-whisper-assets.ps1
 ```
 
-That script downloads the pinned `whisper.cpp` Windows binary release into
-`engines/` and the `ggml-base.en.bin` model into `models/`. The model download is
-validated against the upstream SHA-1 listed by `whisper.cpp`. On macOS and Linux,
-place a compatible `whisper-cli` binary at `engines/whisper-cli` and the selected
-model at `models/ggml-<model>.bin`.
+That script downloads the pinned `whisper.cpp` Windows binary release, installs
+`whisper-cli.exe` and its DLL runtime files into `engines/`, and installs the
+`ggml-base.en.bin` model into `models/`. The model download is validated against
+the upstream SHA-1 listed by `whisper.cpp`. On macOS and Linux, place a
+compatible `whisper-cli` binary at `engines/whisper-cli` and the selected model
+at `models/ggml-<model>.bin`.
 
 Packaged app builds should include:
 
@@ -99,6 +102,7 @@ The app saves `settings.toml` in the operating system's config directory. It cur
 
 - Voice capture hotkey.
 - Whisper engine, model preset, optional advanced paths, and language.
+- Automatic insertion and optional trailing spaces after inserted dictation.
 - Post-processing keyword swaps.
 
 When the hotkey is held, the app captures microphone audio and shows a small always-on-top overlay.
