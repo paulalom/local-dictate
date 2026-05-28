@@ -282,16 +282,16 @@ keyword_swaps = []
 
     #[cfg(target_os = "windows")]
     fn expected_default_capture_hotkey() -> &'static str {
-        "Win+Alt"
+        "Ctrl+Win"
     }
 
     #[cfg(target_os = "macos")]
     fn expected_default_capture_hotkey() -> &'static str {
-        "Cmd+Option"
+        "Ctrl+Cmd"
     }
 
     #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
     fn expected_default_capture_hotkey() -> &'static str {
-        "Super+Alt"
+        "Ctrl+Super"
     }
 }

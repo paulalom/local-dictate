@@ -36,7 +36,7 @@ cargo run -p local-dictate-cli -- `
   --model .\models\ggml-base.en.bin `
   --audio .\recordings\sample.wav `
   --language en `
-  --capture-hotkey Win+Alt `
+  --capture-hotkey Ctrl+Win `
   --swap peers=PRs
 ```
 
@@ -45,7 +45,7 @@ case-insensitively, so `--swap peers=PRs` changes `peers` or `Peers` to `PRs` wi
 words like `appears`.
 
 `--capture-hotkey` validates the push-to-talk hotkey setting that the live voice capture surface will
-use. It defaults to `Win+Alt` on Windows, `Cmd+Option` on macOS, and `Super+Alt` on Linux and
+use. It defaults to `Ctrl+Win` on Windows, `Ctrl+Cmd` on macOS, and `Ctrl+Super` on Linux and
 other Unix-like systems.
 
 The Rust adapter does not make network requests at runtime; it invokes a local

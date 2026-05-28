@@ -3,13 +3,13 @@ use std::fmt;
 use crate::PostProcessingSettings;
 
 #[cfg(target_os = "windows")]
-const DEFAULT_CAPTURE_HOTKEY: &str = "Win+Alt";
+const DEFAULT_CAPTURE_HOTKEY: &str = "Ctrl+Win";
 
 #[cfg(target_os = "macos")]
-const DEFAULT_CAPTURE_HOTKEY: &str = "Cmd+Option";
+const DEFAULT_CAPTURE_HOTKEY: &str = "Ctrl+Cmd";
 
 #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
-const DEFAULT_CAPTURE_HOTKEY: &str = "Super+Alt";
+const DEFAULT_CAPTURE_HOTKEY: &str = "Ctrl+Super";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DictationSettings {
@@ -165,16 +165,16 @@ mod tests {
 
     #[cfg(target_os = "windows")]
     fn expected_default_capture_hotkey() -> &'static str {
-        "Win+Alt"
+        "Ctrl+Win"
     }
 
     #[cfg(target_os = "macos")]
     fn expected_default_capture_hotkey() -> &'static str {
-        "Cmd+Option"
+        "Ctrl+Cmd"
     }
 
     #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
     fn expected_default_capture_hotkey() -> &'static str {
-        "Super+Alt"
+        "Ctrl+Super"
     }
 }

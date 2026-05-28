@@ -248,8 +248,8 @@ mod tests {
 
     #[test]
     fn supports_modifier_only_hotkeys() {
-        let binding = HotkeyBinding::parse("Win+Alt").unwrap();
-        let pressed = HashSet::from([Keycode::LMeta, Keycode::RAlt]);
+        let binding = HotkeyBinding::parse("Ctrl+Win").unwrap();
+        let pressed = HashSet::from([Keycode::RControl, Keycode::LMeta]);
 
         assert!(binding.is_down(&pressed));
     }

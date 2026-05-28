@@ -147,9 +147,9 @@ fn print_usage() {
 local-dictate CLI
 
 Usage:
-  local-dictate-cli --engine <whisper-cli> --model <ggml-model> --audio <wav-file> [--language en] [--capture-hotkey Win+Alt] [--swap peers=PRs]
+  local-dictate-cli --engine <whisper-cli> --model <ggml-model> --audio <wav-file> [--language en] [--capture-hotkey Ctrl+Win] [--swap peers=PRs]
 
 Example:
-  cargo run -p local-dictate-cli -- --engine .\\engines\\whisper-cli.exe --model .\\models\\ggml-base.en.bin --audio .\\recordings\\sample.wav --language en --capture-hotkey Win+Alt --swap peers=PRs"
+  cargo run -p local-dictate-cli -- --engine .\\engines\\whisper-cli.exe --model .\\models\\ggml-base.en.bin --audio .\\recordings\\sample.wav --language en --capture-hotkey Ctrl+Win --swap peers=PRs"
     );
 }
