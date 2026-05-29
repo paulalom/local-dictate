@@ -824,6 +824,8 @@ impl eframe::App for SettingsApp {
         self.poll_hotkey_events();
         self.poll_runtime_events();
         self.record_hotkey_from_events(context);
+        // App::ui is skipped while the settings window is hidden to the tray.
+        self.overlay(context);
 
         if context.input_mut(|input| {
             input.consume_shortcut(&egui::KeyboardShortcut::new(
@@ -836,8 +838,6 @@ impl eframe::App for SettingsApp {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.overlay(ui.ctx());
-
         egui::Frame::central_panel(ui.style()).show(ui, |ui| {
             self.top_bar(ui);
 
