@@ -78,11 +78,18 @@ the upstream SHA-1 listed by `whisper.cpp`. On macOS and Linux, place a
 compatible `whisper-cli` binary at `engines/whisper-cli` and the selected model
 at `models/ggml-<model>.bin`.
 
-Packaged app builds should include:
+Fully bundled app builds should include:
 
 - `engines/whisper-cli.exe` on Windows, or `engines/whisper-cli` on macOS/Linux.
 - `models/ggml-base.en.bin` for the default English model.
 - `THIRD_PARTY_NOTICES.md` with the app distribution.
+
+The GitHub release workflow currently publishes app packages for Windows,
+macOS, and Linux. Those packages include the Local Dictate UI and CLI binaries,
+README, and third-party notices. The Whisper engine and model are still
+installed separately: Windows packages include `scripts/install-whisper-assets.ps1`,
+while macOS and Linux users should place a compatible `whisper-cli` binary and
+`ggml` model in `engines/` and `models/`.
 
 ## Settings App
 
@@ -135,6 +142,25 @@ Or with the Windows helper:
 The binary will be in `target\release\local-dictate-ui.exe` on Windows, and
 `target/release/local-dictate-ui` on macOS or Linux. Build from each target OS to produce that
 platform's native app binary.
+
+## GitHub Releases
+
+Pushing a version tag creates a GitHub release with one package per supported
+operating system:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The release workflow builds and tests the workspace, then uploads:
+
+- `local-dictate-<version>-windows-x64.zip`
+- `local-dictate-<version>-macos-universal.zip`
+- `local-dictate-<version>-linux-x64.tar.gz`
+
+You can also run the `Release` workflow manually from GitHub Actions and provide
+the release tag, such as `v0.1.0`. Manual runs default to draft releases.
 
 On Windows, if Cargo cannot find the MSVC linker environment, run through the helper:
 
