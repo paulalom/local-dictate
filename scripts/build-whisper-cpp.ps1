@@ -38,6 +38,19 @@ function Assert-WithinPath {
     }
 }
 
+function Invoke-NativeCommand {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [string[]]$ArgumentList = @()
+    )
+
+    & $FilePath @ArgumentList
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "$FilePath failed with exit code $LASTEXITCODE"
+    }
+}
+
 function Invoke-WhisperCppBuild {
     param(
         [Parameter(Mandatory = $true)][string]$BuildDir,
@@ -51,12 +64,15 @@ function Invoke-WhisperCppBuild {
         "-B", $BuildDir,
         "-DCMAKE_BUILD_TYPE=Release",
         "-DBUILD_SHARED_LIBS=OFF",
+        "-DGGML_NATIVE=OFF",
         "-DWHISPER_BUILD_TESTS=OFF",
         "-DWHISPER_BUILD_SERVER=OFF"
     ) + $ExtraCmakeArgs
 
-    & cmake @cmakeArgs
-    & cmake --build $BuildDir --config Release --target whisper-cli --parallel
+    Invoke-NativeCommand -FilePath "cmake" -ArgumentList $cmakeArgs
+    Invoke-NativeCommand `
+        -FilePath "cmake" `
+        -ArgumentList @("--build", $BuildDir, "--config", "Release", "--target", "whisper-cli", "--parallel")
 }
 
 function Find-WhisperCli {
@@ -100,11 +116,15 @@ if (-not (Test-Path -LiteralPath (Join-Path $sourceRoot ".git") -PathType Contai
         Remove-Item -LiteralPath $sourceRoot -Recurse -Force
     }
 
-    & git clone `
-        --depth 1 `
-        --branch $WhisperCppVersion `
-        https://github.com/ggml-org/whisper.cpp.git `
-        $sourceRoot
+    Invoke-NativeCommand `
+        -FilePath "git" `
+        -ArgumentList @(
+            "clone",
+            "--depth", "1",
+            "--branch", $WhisperCppVersion,
+            "https://github.com/ggml-org/whisper.cpp.git",
+            $sourceRoot
+        )
 }
 
 switch ($Platform) {
@@ -116,7 +136,7 @@ switch ($Platform) {
         $destination = Join-Path $destinationRoot "whisper-cli"
 
         Copy-Item -LiteralPath $binary -Destination $destination -Force
-        & chmod +x $destination
+        Invoke-NativeCommand -FilePath "chmod" -ArgumentList @("+x", $destination)
     }
 
     "macos-universal" {
@@ -126,17 +146,25 @@ switch ($Platform) {
 
         Invoke-WhisperCppBuild `
             -BuildDir $arm64BuildDir `
-            -ExtraCmakeArgs @("-DCMAKE_OSX_ARCHITECTURES=arm64")
+            -ExtraCmakeArgs @(
+                "-DCMAKE_OSX_ARCHITECTURES=arm64",
+                "-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0"
+            )
         Invoke-WhisperCppBuild `
             -BuildDir $x64BuildDir `
-            -ExtraCmakeArgs @("-DCMAKE_OSX_ARCHITECTURES=x86_64")
+            -ExtraCmakeArgs @(
+                "-DCMAKE_OSX_ARCHITECTURES=x86_64",
+                "-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0"
+            )
 
         $arm64Binary = Find-WhisperCli -BuildDir $arm64BuildDir
         $x64Binary = Find-WhisperCli -BuildDir $x64BuildDir
         $destination = Join-Path $destinationRoot "whisper-cli"
 
-        & lipo -create -output $destination $arm64Binary $x64Binary
-        & chmod +x $destination
+        Invoke-NativeCommand `
+            -FilePath "lipo" `
+            -ArgumentList @("-create", "-output", $destination, $arm64Binary, $x64Binary)
+        Invoke-NativeCommand -FilePath "chmod" -ArgumentList @("+x", $destination)
     }
 }
 
