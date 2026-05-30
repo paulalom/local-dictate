@@ -22,6 +22,7 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   WHISPER_CPP_VERSION: v1.8.4
+  DEFAULT_WHISPER_MODEL: base.en
 
 jobs:
   build:
@@ -85,13 +86,13 @@ jobs:
           cargo test --workspace
           cargo build --workspace --release
 
-      - name: Install Windows whisper.cpp engine
+      - name: Install Windows whisper.cpp engine and default model
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           ./scripts/install-whisper-assets.ps1 `
             -WhisperCppVersion "${{ env.WHISPER_CPP_VERSION }}" `
-            -SkipModel
+            -Model "${{ env.DEFAULT_WHISPER_MODEL }}"
 
       - name: Test and build macOS universal binaries
         if: runner.os == 'macOS'
@@ -120,6 +121,13 @@ jobs:
             -WhisperCppVersion "${{ env.WHISPER_CPP_VERSION }}" `
             -Platform "${{ matrix.platform }}"
 
+      - name: Install default Whisper model
+        if: runner.os != 'Windows'
+        shell: pwsh
+        run: |
+          ./scripts/install-whisper-model.ps1 `
+            -Model "${{ env.DEFAULT_WHISPER_MODEL }}"
+
       - name: Package release asset
         shell: pwsh
         run: |
@@ -128,7 +136,9 @@ jobs:
             -Platform "${{ matrix.platform }}" `
             -BinaryDir "${{ matrix.binary_dir }}" `
             -OutputDir dist `
-            -RequireEngine
+            -RequireEngine `
+            -RequireModel `
+            -DefaultModel "${{ env.DEFAULT_WHISPER_MODEL }}"
 
       - name: Upload release asset
         uses: actions/upload-artifact@v7.0.1
@@ -187,7 +197,7 @@ jobs:
           - local-dictate-$RELEASE_VERSION-macos-universal.zip
           - local-dictate-$RELEASE_VERSION-linux-x64.tar.gz
 
-          These packages include the Local Dictate UI and CLI binaries, a bundled whisper.cpp $WHISPER_CPP_VERSION whisper-cli engine, and project notices. The default ggml model is still installed separately: use scripts/install-whisper-assets.ps1 on Windows, or place a compatible ggml model beside the app as described in README.md.
+          These packages include the Local Dictate UI and CLI binaries, a bundled whisper.cpp $WHISPER_CPP_VERSION whisper-cli engine, the default $DEFAULT_WHISPER_MODEL ggml model, README, and project notices. Extract the package and run the app; no separate whisper.cpp or model setup is required for the default configuration.
           EOF
 
           create_args=()

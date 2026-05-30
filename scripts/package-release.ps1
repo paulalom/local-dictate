@@ -11,7 +11,12 @@ param(
 
     [string]$OutputDir = "dist",
 
-    [switch]$RequireEngine
+    [switch]$RequireEngine,
+
+    [ValidateSet("tiny.en", "base.en", "small.en", "base", "small")]
+    [string]$DefaultModel = "base.en",
+
+    [switch]$RequireModel
 )
 
 $ErrorActionPreference = "Stop"
@@ -96,6 +101,40 @@ function Copy-EngineAssets {
     }
 }
 
+function Copy-ModelAssets {
+    $modelRoot = Join-Path $repoRoot "models"
+    $destinationRoot = Join-Path $packageDir "models"
+    $modelFileName = "ggml-$DefaultModel.bin"
+    $modelPath = Join-Path $modelRoot $modelFileName
+
+    if (-not (Test-Path -LiteralPath $modelPath -PathType Leaf)) {
+        if ($RequireModel) {
+            throw "Missing bundled Whisper model: $modelPath"
+        }
+
+        Write-Warning "Skipping bundled Whisper model; missing $modelPath"
+        return
+    }
+
+    New-Item -ItemType Directory -Force -Path $destinationRoot | Out-Null
+    Copy-Item -LiteralPath $modelPath -Destination (Join-Path $destinationRoot $modelFileName) -Force
+}
+
+function Copy-SetupScripts {
+    $scriptsDir = Join-Path $packageDir "scripts"
+    New-Item -ItemType Directory -Force -Path $scriptsDir | Out-Null
+
+    Copy-Item `
+        -LiteralPath (Join-Path (Join-Path $repoRoot "scripts") "install-whisper-model.ps1") `
+        -Destination (Join-Path $scriptsDir "install-whisper-model.ps1")
+
+    if ($Platform -eq "windows-x64") {
+        Copy-Item `
+            -LiteralPath (Join-Path (Join-Path $repoRoot "scripts") "install-whisper-assets.ps1") `
+            -Destination (Join-Path $scriptsDir "install-whisper-assets.ps1")
+    }
+}
+
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $binaryRoot = Resolve-RepoPath $BinaryDir
 $outputRoot = Resolve-RepoPath $OutputDir
@@ -115,22 +154,17 @@ New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
 Copy-Item -LiteralPath (Join-Path $repoRoot "README.md") -Destination $packageDir
 Copy-Item -LiteralPath (Join-Path $repoRoot "THIRD_PARTY_NOTICES.md") -Destination $packageDir
 Copy-EngineAssets
+Copy-ModelAssets
+Copy-SetupScripts
 
 switch ($Platform) {
     "windows-x64" {
-        $scriptsDir = Join-Path $packageDir "scripts"
-
-        New-Item -ItemType Directory -Force -Path $scriptsDir | Out-Null
-
         Copy-Executable `
             -Source (Join-Path $binaryRoot "local-dictate-ui.exe") `
             -Destination (Join-Path $packageDir "local-dictate-ui.exe")
         Copy-Executable `
             -Source (Join-Path $binaryRoot "local-dictate-cli.exe") `
             -Destination (Join-Path $packageDir "local-dictate-cli.exe")
-        Copy-Item `
-            -LiteralPath (Join-Path (Join-Path $repoRoot "scripts") "install-whisper-assets.ps1") `
-            -Destination (Join-Path $scriptsDir "install-whisper-assets.ps1")
 
         $archivePath = Join-Path $outputRoot "$packageName.zip"
         if (Test-Path -LiteralPath $archivePath) {

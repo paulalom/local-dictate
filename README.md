@@ -77,15 +77,17 @@ That script downloads the pinned `whisper.cpp` Windows binary release, installs
 the upstream SHA-1 listed by `whisper.cpp`.
 
 For local macOS and Linux release prep, build the pinned `whisper.cpp` engine
-from source with:
+from source and install the default model with:
 
 ```powershell
 pwsh ./scripts/build-whisper-cpp.ps1 -Platform macos-universal
 pwsh ./scripts/build-whisper-cpp.ps1 -Platform linux-x64
+pwsh ./scripts/install-whisper-model.ps1 -Model base.en
 ```
 
-That script installs the compatible `whisper-cli` binary to `engines/`. Place
-the selected model at `models/ggml-<model>.bin`.
+The engine build script installs the compatible `whisper-cli` binary to
+`engines/`. The model script installs `models/ggml-base.en.bin` and validates it
+against the upstream SHA-1 listed by `whisper.cpp`.
 
 Fully bundled app builds should include:
 
@@ -95,9 +97,10 @@ Fully bundled app builds should include:
 
 The GitHub release workflow publishes app packages for Windows, macOS, and
 Linux. Those packages include the Local Dictate UI and CLI binaries, a bundled
-`whisper.cpp` `whisper-cli` engine for the target operating system, README, and
-third-party notices. The default `ggml` model is still installed separately to
-avoid duplicating a large model file in every OS package.
+`whisper.cpp` `whisper-cli` engine for the target operating system, the default
+`ggml-base.en.bin` model, README, and third-party notices. The default
+configuration is runnable after extracting the package; custom model paths are
+only needed for non-default models.
 
 ## Settings App
 

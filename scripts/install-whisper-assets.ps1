@@ -58,27 +58,6 @@ if ($SkipModel) {
     return
 }
 
-$modelHashes = @{
-    "tiny.en"  = "c78c86eb1a8faa21b369bcd33207cc90d64ae9df"
-    "base.en"  = "137c40403d78fd54d454da0f9bd998f78703390c"
-    "small.en" = "db8a495a91d927739e50b3fc1cc4c6b8f6c2d022"
-    "base"     = "465707469ff3a37a2b9b8d8f89f2f99de7299dac"
-    "small"    = "55356645c2b361a969dfd0ef2c5a50d530afd8d5"
-}
-
-$modelPath = Join-Path $modelsDir "ggml-$Model.bin"
-$modelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-$Model.bin"
-
-if (-not (Test-Path -LiteralPath $modelPath -PathType Leaf)) {
-    Write-Host "Downloading ggml model $Model from $modelUrl"
-    Invoke-WebRequest -Uri $modelUrl -OutFile $modelPath
-}
-
-$expectedHash = $modelHashes[$Model]
-$actualHash = (Get-FileHash -Path $modelPath -Algorithm SHA1).Hash.ToLowerInvariant()
-
-if ($actualHash -ne $expectedHash) {
-    throw "Model hash mismatch for $modelPath. Expected $expectedHash, got $actualHash."
-}
-
-Write-Host "Installed ggml model to $modelPath"
+& (Join-Path $PSScriptRoot "install-whisper-model.ps1") `
+    -Model $Model `
+    -Destination $repoRoot
