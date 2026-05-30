@@ -12,8 +12,8 @@ That means:
   transcription engine can read it.
 - Temporary audio is deleted as soon as transcription processing completes.
 - Transcribed text stays in memory long enough to apply local post-processing
-  such as disfluency cleanup and keyword swaps and, when enabled, insert it
-  into the focused field.
+  such as disfluency cleanup, revision cleanup, and keyword swaps and, when
+  enabled, insert it into the focused field.
 - The app does not save dictated text, transcripts, or captured audio.
 - The app does not include cloud fallback, telemetry, analytics, crash uploads,
   sync, or remote transcription.
@@ -22,8 +22,9 @@ That means:
   operating system or release environment.
 
 The local settings file may store user configuration such as hotkeys, selected
-engine/model identifiers, language, automatic insertion, disfluency cleanup, and
-keyword swaps. It must not store dictated audio or transcript content.
+engine/model identifiers, language, automatic insertion, disfluency cleanup,
+revision cleanup, and keyword swaps. It must not store dictated audio or
+transcript content.
 
 The asset installation script is separate from runtime behavior. It may download
 public engine/model assets when a developer or packager explicitly runs it, but

@@ -125,11 +125,14 @@ impl CliArguments {
 
         let cleanup_disfluencies =
             self.flag_enabled("cleanup-disfluencies") || self.flag_enabled("clean-up-dictation");
+        let cleanup_revisions =
+            self.flag_enabled("cleanup-revisions") || self.flag_enabled("clean-up-revisions");
 
         Ok(DictationSettings::new(
             capture_hotkey,
             PostProcessingSettings::new(keyword_swaps)
-                .with_cleanup_disfluencies(cleanup_disfluencies),
+                .with_cleanup_disfluencies(cleanup_disfluencies)
+                .with_cleanup_revisions(cleanup_revisions),
         ))
     }
 
@@ -159,9 +162,9 @@ fn print_usage() {
 local-dictate CLI
 
 Usage:
-  local-dictate-cli --engine <whisper-cli> --model <ggml-model> --audio <wav-file> [--language en] [--capture-hotkey Ctrl+Win] [--cleanup-disfluencies] [--swap peers=PRs]
+  local-dictate-cli --engine <whisper-cli> --model <ggml-model> --audio <wav-file> [--language en] [--capture-hotkey Ctrl+Win] [--cleanup-disfluencies] [--cleanup-revisions] [--swap peers=PRs]
 
 Example:
-  cargo run -p local-dictate-cli -- --engine .\\engines\\whisper-cli.exe --model .\\models\\ggml-base.en.bin --audio .\\recordings\\sample.wav --language en --capture-hotkey Ctrl+Win --cleanup-disfluencies --swap peers=PRs"
+  cargo run -p local-dictate-cli -- --engine .\\engines\\whisper-cli.exe --model .\\models\\ggml-base.en.bin --audio .\\recordings\\sample.wav --language en --capture-hotkey Ctrl+Win --cleanup-disfluencies --cleanup-revisions --swap peers=PRs"
     );
 }

@@ -22,6 +22,8 @@ pub struct AppConfig {
     pub auto_insert: bool,
     pub cleanup_disfluencies: bool,
     #[serde(default = "default_true")]
+    pub cleanup_revisions: bool,
+    #[serde(default = "default_true")]
     pub append_trailing_space: bool,
     pub keyword_swaps: Vec<KeywordSwapConfig>,
 }
@@ -48,7 +50,8 @@ impl AppConfig {
         Ok(DictationSettings::new(
             capture_hotkey,
             PostProcessingSettings::new(keyword_swaps)
-                .with_cleanup_disfluencies(self.cleanup_disfluencies),
+                .with_cleanup_disfluencies(self.cleanup_disfluencies)
+                .with_cleanup_revisions(self.cleanup_revisions),
         ))
     }
 }
@@ -64,6 +67,7 @@ impl Default for AppConfig {
             language: "en".to_string(),
             auto_insert: true,
             cleanup_disfluencies: false,
+            cleanup_revisions: true,
             append_trailing_space: true,
             keyword_swaps: Vec::new(),
         }
@@ -213,6 +217,7 @@ mod tests {
             language: "en".to_string(),
             auto_insert: true,
             cleanup_disfluencies: true,
+            cleanup_revisions: true,
             append_trailing_space: true,
             keyword_swaps: vec![KeywordSwapConfig {
                 from: "peers".to_string(),
@@ -230,6 +235,7 @@ mod tests {
             "PRs need review"
         );
         assert!(settings.post_processing().cleanup_disfluencies());
+        assert!(settings.post_processing().cleanup_revisions());
     }
 
     #[test]
@@ -243,6 +249,7 @@ mod tests {
             language: "en".to_string(),
             auto_insert: true,
             cleanup_disfluencies: false,
+            cleanup_revisions: false,
             append_trailing_space: true,
             keyword_swaps: vec![KeywordSwapConfig {
                 from: " ".to_string(),
@@ -265,6 +272,7 @@ mod tests {
         assert!(config.engine_path.is_empty());
         assert!(config.model_path.is_empty());
         assert!(!config.cleanup_disfluencies);
+        assert!(config.cleanup_revisions);
         assert!(config.append_trailing_space);
     }
 
@@ -286,6 +294,7 @@ keyword_swaps = []
         assert_eq!(config.model, "base.en");
         assert!(config.append_trailing_space);
         assert!(!config.cleanup_disfluencies);
+        assert!(config.cleanup_revisions);
         assert_eq!(config.engine_path, "engines/whisper-cli.exe");
         assert_eq!(config.model_path, "models/ggml-base.en.bin");
     }

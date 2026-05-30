@@ -38,6 +38,7 @@ cargo run -p local-dictate-cli -- `
   --language en `
   --capture-hotkey Ctrl+Win `
   --cleanup-disfluencies `
+  --cleanup-revisions `
   --swap peers=PRs
 ```
 
@@ -47,6 +48,8 @@ words like `appears`.
 
 `--cleanup-disfluencies` enables local post-processing for common dictation cleanup, including
 filler words, immediate repeated words or phrases, and simple hyphenated stutter starts.
+`--cleanup-revisions` separately removes short abandoned revision fragments when they strongly
+overlap with a fuller final clause.
 
 `--capture-hotkey` validates the push-to-talk hotkey setting that the live voice capture surface will
 use. It defaults to `Ctrl+Win` on Windows, `Ctrl+Cmd` on macOS, and `Ctrl+Super` on Linux and
@@ -125,7 +128,8 @@ The app saves `settings.toml` in the operating system's config directory. It cur
 - Voice capture hotkey.
 - Whisper engine, model preset, optional advanced paths, and language.
 - Automatic insertion and optional trailing spaces after inserted dictation.
-- Optional local cleanup for stutters, fillers, and immediate repeated words or phrases.
+- Optional local cleanup for stutters, fillers, and immediate repeats.
+- Optional local cleanup for short abandoned revisions.
 - Post-processing keyword swaps.
 
 When the hotkey is held, the app captures microphone audio and shows a small always-on-top overlay.

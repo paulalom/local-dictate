@@ -35,6 +35,7 @@ impl KeywordSwap {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PostProcessingSettings {
     cleanup_disfluencies: bool,
+    cleanup_revisions: bool,
     keyword_swaps: Vec<KeywordSwap>,
 }
 
@@ -42,12 +43,18 @@ impl PostProcessingSettings {
     pub fn new(keyword_swaps: Vec<KeywordSwap>) -> Self {
         Self {
             cleanup_disfluencies: false,
+            cleanup_revisions: false,
             keyword_swaps,
         }
     }
 
     pub fn with_cleanup_disfluencies(mut self, cleanup_disfluencies: bool) -> Self {
         self.cleanup_disfluencies = cleanup_disfluencies;
+        self
+    }
+
+    pub fn with_cleanup_revisions(mut self, cleanup_revisions: bool) -> Self {
+        self.cleanup_revisions = cleanup_revisions;
         self
     }
 
@@ -68,12 +75,20 @@ impl PostProcessingSettings {
         self.cleanup_disfluencies
     }
 
+    pub fn cleanup_revisions(&self) -> bool {
+        self.cleanup_revisions
+    }
+
     pub fn apply(&self, text: &str) -> String {
-        let text = if self.cleanup_disfluencies {
+        let mut text = if self.cleanup_disfluencies {
             cleanup_disfluencies(text)
         } else {
             text.to_string()
         };
+
+        if self.cleanup_revisions {
+            text = cleanup_revision_segments(&text);
+        }
 
         self.keyword_swaps
             .iter()
@@ -349,6 +364,272 @@ fn contains_sentence_boundary(text: &str, range: Range<usize>) -> bool {
         .any(|character| matches!(character, '.' | '!' | '?'))
 }
 
+fn cleanup_revision_segments(text: &str) -> String {
+    let mut output = String::with_capacity(text.len());
+    let mut sentence_start = 0;
+
+    for (index, character) in text.char_indices() {
+        if is_sentence_punctuation(character) {
+            let sentence_end = index + character.len_utf8();
+            output.push_str(&cleanup_revision_sentence(
+                &text[sentence_start..sentence_end],
+            ));
+            sentence_start = sentence_end;
+        }
+    }
+
+    if sentence_start < text.len() {
+        output.push_str(&cleanup_revision_sentence(&text[sentence_start..]));
+    }
+
+    output
+}
+
+fn cleanup_revision_sentence(sentence: &str) -> String {
+    let clauses = clause_spans(sentence);
+    let Some(removal) = revision_prefix_removal_range(sentence, &clauses) else {
+        return sentence.to_string();
+    };
+
+    let mut output = String::with_capacity(sentence.len());
+    output.push_str(&sentence[..removal.start]);
+    output.push_str(&sentence[removal.end..]);
+    output
+}
+
+fn clause_spans(text: &str) -> Vec<Span> {
+    let mut clauses = Vec::new();
+    let mut start = 0;
+
+    for (index, character) in text.char_indices() {
+        if is_soft_punctuation(character) {
+            if let Some(clause) = trim_span(text, start..index) {
+                clauses.push(clause);
+            }
+
+            start = index + character.len_utf8();
+        }
+    }
+
+    if let Some(clause) = trim_span(text, start..text.len()) {
+        clauses.push(clause);
+    }
+
+    clauses
+}
+
+fn revision_prefix_removal_range(text: &str, clauses: &[Span]) -> Option<Range<usize>> {
+    let (target_clause, prefix_clauses) = clauses.split_last()?;
+
+    if prefix_clauses.is_empty() {
+        return None;
+    }
+
+    let target = RevisionClause::new(text, *target_clause);
+
+    if !target.is_rewrite_target() {
+        return None;
+    }
+
+    let mut strong_matches = 0;
+
+    for clause in prefix_clauses {
+        let clause = RevisionClause::new(text, *clause);
+
+        if clause.is_low_information() {
+            continue;
+        }
+
+        if clause.is_strong_revision_of(&target) {
+            strong_matches += 1;
+            continue;
+        }
+
+        return None;
+    }
+
+    if strong_matches >= 2 {
+        Some(prefix_clauses[0].start..target_clause.start)
+    } else {
+        None
+    }
+}
+
+fn trim_span(text: &str, range: Range<usize>) -> Option<Span> {
+    let mut start = range.start;
+    let mut end = range.end;
+
+    while let Some((index, character)) = next_char(text, start) {
+        if index >= end || !character.is_whitespace() {
+            break;
+        }
+
+        start = index + character.len_utf8();
+    }
+
+    while let Some((index, character)) = previous_char(text, end) {
+        if index < start || !character.is_whitespace() {
+            break;
+        }
+
+        end = index;
+    }
+
+    if start < end {
+        Some(Span { start, end })
+    } else {
+        None
+    }
+}
+
+fn is_sentence_punctuation(character: char) -> bool {
+    matches!(character, '.' | '!' | '?')
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RevisionClause {
+    word_count: usize,
+    tokens: Vec<String>,
+}
+
+impl RevisionClause {
+    fn new(text: &str, span: Span) -> Self {
+        let words = word_spans(&text[span.start..span.end]);
+        let mut tokens = Vec::new();
+
+        for word in &words {
+            let word_text = &text[(span.start + word.start)..(span.start + word.end)];
+            let Some(token) = canonical_revision_token(word_text) else {
+                continue;
+            };
+
+            if !tokens.contains(&token) {
+                tokens.push(token);
+            }
+        }
+
+        Self {
+            word_count: words.len(),
+            tokens,
+        }
+    }
+
+    fn is_rewrite_target(&self) -> bool {
+        self.word_count >= 4 && self.word_count <= 16 && self.tokens.len() >= 3
+    }
+
+    fn is_low_information(&self) -> bool {
+        self.word_count <= 3 && self.tokens.len() <= 1
+    }
+
+    fn is_strong_revision_of(&self, target: &Self) -> bool {
+        if self.word_count > 7 || self.tokens.is_empty() || self.tokens.len() > target.tokens.len()
+        {
+            return false;
+        }
+
+        let overlap = self
+            .tokens
+            .iter()
+            .filter(|token| target.tokens.contains(token))
+            .count();
+
+        overlap >= 2 && overlap * 2 >= self.tokens.len()
+    }
+}
+
+fn canonical_revision_token(word: &str) -> Option<String> {
+    let lower = word.to_ascii_lowercase();
+    let compact = word
+        .chars()
+        .filter(|character| character.is_alphanumeric())
+        .collect::<String>()
+        .to_ascii_lowercase();
+
+    let token = match lower.as_str() {
+        "i'm" | "i've" | "i'd" | "i'll" => "i",
+        "you're" | "you've" | "you'd" | "you'll" => "you",
+        "we're" | "we've" | "we'd" | "we'll" => "we",
+        "they're" | "they've" | "they'd" | "they'll" => "they",
+        "he's" | "he'd" | "he'll" => "he",
+        "she's" | "she'd" | "she'll" => "she",
+        "it's" | "it'd" | "it'll" => "it",
+        _ => match compact.as_str() {
+            "" => return None,
+            "gonna" => "going",
+            "wanna" => "want",
+            "gotta" => "got",
+            "kinda" => "kind",
+            "sorta" => "sort",
+            token if is_revision_stop_token(token) => return None,
+            token => token,
+        },
+    };
+
+    Some(stem_revision_token(token))
+}
+
+fn is_revision_stop_token(token: &str) -> bool {
+    matches!(
+        token,
+        "a" | "an"
+            | "and"
+            | "are"
+            | "as"
+            | "at"
+            | "basically"
+            | "be"
+            | "been"
+            | "but"
+            | "by"
+            | "for"
+            | "from"
+            | "in"
+            | "is"
+            | "just"
+            | "like"
+            | "mean"
+            | "meant"
+            | "of"
+            | "on"
+            | "or"
+            | "really"
+            | "said"
+            | "say"
+            | "so"
+            | "that"
+            | "the"
+            | "to"
+            | "was"
+            | "were"
+            | "with"
+    )
+}
+
+fn stem_revision_token(token: &str) -> String {
+    if token.len() > 5
+        && let Some(stemmed) = token.strip_suffix("ing")
+    {
+        return stemmed.to_string();
+    }
+
+    if token.len() > 4 {
+        if let Some(stemmed) = token.strip_suffix("ed") {
+            return stemmed.to_string();
+        }
+
+        if let Some(stemmed) = token.strip_suffix("es") {
+            return stemmed.to_string();
+        }
+
+        if let Some(stemmed) = token.strip_suffix('s') {
+            return stemmed.to_string();
+        }
+    }
+
+    token.to_string()
+}
+
 fn replace_ranges_with_space(text: &str, mut ranges: Vec<Range<usize>>) -> String {
     if ranges.is_empty() {
         return text.to_string();
@@ -588,6 +869,50 @@ mod tests {
         let settings = PostProcessingSettings::default().with_cleanup_disfluencies(true);
 
         assert_eq!(settings.apply("No. No changes."), "No. No changes.");
+    }
+
+    #[test]
+    fn cleans_abandoned_similar_revision_segments() {
+        let settings = PostProcessingSettings::default().with_cleanup_revisions(true);
+
+        assert_eq!(
+            settings.apply(
+                "I said, this is now, I'm gonna like test, I want to test, this is, I'm going to test this now."
+            ),
+            "I'm going to test this now."
+        );
+    }
+
+    #[test]
+    fn leaves_revision_segments_when_only_disfluency_cleanup_is_enabled() {
+        let settings = PostProcessingSettings::default().with_cleanup_disfluencies(true);
+
+        assert_eq!(
+            settings.apply(
+                "This is now, I'm gonna like test, I want to test, I'm going to test this now."
+            ),
+            "This is now, I'm gonna like test, I want to test, I'm going to test this now."
+        );
+    }
+
+    #[test]
+    fn keeps_literal_short_intro_before_final_clause() {
+        let settings = PostProcessingSettings::default().with_cleanup_revisions(true);
+
+        assert_eq!(
+            settings.apply("I said, I'm going to test this now."),
+            "I said, I'm going to test this now."
+        );
+    }
+
+    #[test]
+    fn keeps_distinct_comma_separated_thoughts() {
+        let settings = PostProcessingSettings::default().with_cleanup_revisions(true);
+
+        assert_eq!(
+            settings.apply("I opened settings, changed the model, and saved the file."),
+            "I opened settings, changed the model, and saved the file."
+        );
     }
 
     #[test]

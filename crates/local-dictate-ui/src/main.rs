@@ -53,6 +53,7 @@ struct SettingsApp {
     language: String,
     auto_insert: bool,
     cleanup_disfluencies: bool,
+    cleanup_revisions: bool,
     append_trailing_space: bool,
     swaps: Vec<SwapRow>,
     new_from: String,
@@ -132,6 +133,7 @@ impl SettingsApp {
             language: config.language,
             auto_insert: config.auto_insert,
             cleanup_disfluencies: config.cleanup_disfluencies,
+            cleanup_revisions: config.cleanup_revisions,
             append_trailing_space: config.append_trailing_space,
             swaps: config
                 .keyword_swaps
@@ -249,6 +251,7 @@ impl SettingsApp {
         self.language = config.language;
         self.auto_insert = config.auto_insert;
         self.cleanup_disfluencies = config.cleanup_disfluencies;
+        self.cleanup_revisions = config.cleanup_revisions;
         self.append_trailing_space = config.append_trailing_space;
         self.swaps = config
             .keyword_swaps
@@ -312,6 +315,7 @@ impl SettingsApp {
             language: self.language.trim().to_string(),
             auto_insert: self.auto_insert,
             cleanup_disfluencies: self.cleanup_disfluencies,
+            cleanup_revisions: self.cleanup_revisions,
             append_trailing_space: self.append_trailing_space,
             keyword_swaps,
         };
@@ -333,6 +337,7 @@ impl SettingsApp {
 
         PostProcessingSettings::new(swaps)
             .with_cleanup_disfluencies(self.cleanup_disfluencies)
+            .with_cleanup_revisions(self.cleanup_revisions)
             .apply(&self.preview_input)
     }
 
@@ -717,6 +722,15 @@ impl SettingsApp {
                         &mut self.cleanup_disfluencies,
                         "Remove stutters and fillers",
                     )
+                    .changed()
+                {
+                    self.mark_dirty();
+                }
+                ui.end_row();
+
+                ui.label("Revisions");
+                if ui
+                    .checkbox(&mut self.cleanup_revisions, "Remove abandoned rewrites")
                     .changed()
                 {
                     self.mark_dirty();
