@@ -141,7 +141,7 @@ impl SettingsApp {
                 .collect(),
             new_from: String::new(),
             new_to: String::new(),
-            preview_input: "Um, ask peers peers to review this before we merge.".to_string(),
+            preview_input: "Um, ask peers peers to review this before we merge. I said, this is now, I'm gonna like test, I want to test, this is, I'm going to test this now.".to_string(),
             status,
             recording_hotkey: false,
             hotkey_monitor,
