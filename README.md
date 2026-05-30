@@ -123,7 +123,7 @@ On this Windows development setup, the helper script also works:
 .\scripts\cargo-dev.cmd run -p local-dictate-ui
 ```
 
-The app saves `settings.toml` in the operating system's config directory. It currently configures:
+The app automatically saves `settings.toml` in the operating system's config directory. It currently configures:
 
 - Voice capture hotkey.
 - Whisper engine, model preset, optional advanced paths, and language.

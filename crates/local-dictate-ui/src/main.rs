@@ -61,7 +61,6 @@ struct SettingsApp {
     preview_input: String,
     status: StatusMessage,
     recording_hotkey: bool,
-    dirty: bool,
     hotkey_monitor: Option<HotkeyMonitor>,
     hotkey_sender: mpsc::Sender<HotkeyEvent>,
     hotkey_events: mpsc::Receiver<HotkeyEvent>,
@@ -145,7 +144,6 @@ impl SettingsApp {
             preview_input: "Um, ask peers peers to review this before we merge.".to_string(),
             status,
             recording_hotkey: false,
-            dirty: false,
             hotkey_monitor,
             hotkey_sender,
             hotkey_events,
@@ -168,9 +166,25 @@ impl SettingsApp {
         app
     }
 
-    fn mark_dirty(&mut self) {
-        self.dirty = true;
-        self.status = StatusMessage::info("Unsaved changes");
+    fn save_settings(&mut self) {
+        let Ok(config) = self.current_config() else {
+            return;
+        };
+
+        self.save_config(&config, StatusMessage::success("Settings saved"));
+    }
+
+    fn save_config(&mut self, config: &AppConfig, success_status: StatusMessage) {
+        match config::save(config) {
+            Ok(path) => {
+                self.config_path = Some(path);
+                self.status = success_status;
+                self.update_hotkey_monitor(&config.capture_hotkey);
+            }
+            Err(error) => {
+                self.status = StatusMessage::error(format!("Save failed: {error}"));
+            }
+        }
     }
 
     fn add_swap(&mut self) {
@@ -185,7 +199,7 @@ impl SettingsApp {
         });
         self.new_from.clear();
         self.new_to.clear();
-        self.mark_dirty();
+        self.save_settings();
     }
 
     fn reload(&mut self) {
@@ -195,7 +209,6 @@ impl SettingsApp {
                     loaded.config,
                     Some(loaded.path),
                     StatusMessage::success("Settings reloaded"),
-                    false,
                 );
             }
             Err(error) => {
@@ -209,30 +222,13 @@ impl SettingsApp {
             .config_path
             .clone()
             .or_else(|| config::default_config_path().ok());
+        let config = AppConfig::default();
         self.apply_config(
-            AppConfig::default(),
+            config.clone(),
             config_path,
             StatusMessage::info("Defaults restored"),
-            true,
         );
-    }
-
-    fn save(&mut self) {
-        let Ok(config) = self.current_config() else {
-            return;
-        };
-
-        match config::save(&config) {
-            Ok(path) => {
-                self.config_path = Some(path.clone());
-                self.status = StatusMessage::success(format!("Saved to {}", path.display()));
-                self.dirty = false;
-                self.update_hotkey_monitor(&config.capture_hotkey);
-            }
-            Err(error) => {
-                self.status = StatusMessage::error(format!("Save failed: {error}"));
-            }
-        }
+        self.save_config(&config, StatusMessage::success("Defaults restored"));
     }
 
     fn apply_config(
@@ -240,7 +236,6 @@ impl SettingsApp {
         config: AppConfig,
         config_path: Option<PathBuf>,
         status: StatusMessage,
-        dirty: bool,
     ) {
         self.config_path = config_path;
         self.capture_hotkey = config.capture_hotkey;
@@ -260,7 +255,6 @@ impl SettingsApp {
             .collect();
         self.status = status;
         self.recording_hotkey = false;
-        self.dirty = dirty;
         self.update_hotkey_monitor(&self.capture_hotkey.clone());
     }
 
@@ -568,7 +562,7 @@ impl SettingsApp {
         if let Some(hotkey) = recorded {
             self.capture_hotkey = hotkey;
             self.recording_hotkey = false;
-            self.mark_dirty();
+            self.save_settings();
         }
     }
 
@@ -576,10 +570,6 @@ impl SettingsApp {
         ui.horizontal(|ui| {
             ui.heading("Local Dictate");
             ui.add_space(8.0);
-
-            if self.dirty {
-                ui.label(egui::RichText::new("Unsaved").color(egui::Color32::from_rgb(180, 96, 0)));
-            }
         });
 
         if let Some(path) = &self.config_path {
@@ -597,7 +587,7 @@ impl SettingsApp {
             );
 
             if response.changed() {
-                self.mark_dirty();
+                self.save_settings();
             }
 
             let record_label = if self.recording_hotkey {
@@ -642,7 +632,7 @@ impl SettingsApp {
                         }
                     });
                 if engine_changed {
-                    self.mark_dirty();
+                    self.save_settings();
                 }
                 ui.end_row();
 
@@ -664,7 +654,7 @@ impl SettingsApp {
                         }
                     });
                 if model_changed {
-                    self.mark_dirty();
+                    self.save_settings();
                 }
                 ui.end_row();
 
@@ -678,7 +668,7 @@ impl SettingsApp {
                         )
                         .changed()
                     {
-                        self.mark_dirty();
+                        self.save_settings();
                     }
                     ui.end_row();
                 }
@@ -693,7 +683,7 @@ impl SettingsApp {
                         )
                         .changed()
                     {
-                        self.mark_dirty();
+                        self.save_settings();
                     }
                     ui.end_row();
                 }
@@ -706,13 +696,13 @@ impl SettingsApp {
                     )
                     .changed()
                 {
-                    self.mark_dirty();
+                    self.save_settings();
                 }
                 ui.end_row();
 
                 ui.label("Insert");
                 if ui.checkbox(&mut self.auto_insert, "Automatic").changed() {
-                    self.mark_dirty();
+                    self.save_settings();
                 }
                 ui.end_row();
 
@@ -724,7 +714,7 @@ impl SettingsApp {
                     )
                     .changed()
                 {
-                    self.mark_dirty();
+                    self.save_settings();
                 }
                 ui.end_row();
 
@@ -733,7 +723,7 @@ impl SettingsApp {
                     .checkbox(&mut self.cleanup_revisions, "Remove abandoned rewrites")
                     .changed()
                 {
-                    self.mark_dirty();
+                    self.save_settings();
                 }
                 ui.end_row();
 
@@ -742,7 +732,7 @@ impl SettingsApp {
                     .checkbox(&mut self.append_trailing_space, "Add trailing space")
                     .changed()
                 {
-                    self.mark_dirty();
+                    self.save_settings();
                 }
                 ui.end_row();
             });
@@ -785,7 +775,7 @@ impl SettingsApp {
         }
 
         if changed {
-            self.mark_dirty();
+            self.save_settings();
         }
 
         ui.add_space(8.0);
@@ -826,10 +816,6 @@ impl SettingsApp {
 
     fn action_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            if ui.button("Save").clicked() {
-                self.save();
-            }
-
             if ui.button("Reload").clicked() {
                 self.reload();
             }
@@ -858,36 +844,34 @@ impl eframe::App for SettingsApp {
         self.record_hotkey_from_events(context);
         // App::ui is skipped while the settings window is hidden to the tray.
         self.overlay(context);
-
-        if context.input_mut(|input| {
-            input.consume_shortcut(&egui::KeyboardShortcut::new(
-                egui::Modifiers::COMMAND,
-                egui::Key::S,
-            ))
-        }) {
-            self.save();
-        }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         egui::Frame::central_panel(ui.style()).show(ui, |ui| {
             self.top_bar(ui);
 
-            ui.add_space(12.0);
-            self.hotkey_section(ui);
+            let action_bar_height = 32.0;
+            let settings_height = (ui.available_height() - action_bar_height).max(160.0);
+
+            egui::ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .max_height(settings_height)
+                .show(ui, |ui| {
+                    ui.add_space(12.0);
+                    self.hotkey_section(ui);
+
+                    ui.separator();
+                    self.engine_section(ui);
+
+                    ui.separator();
+                    self.swaps_section(ui);
+
+                    ui.separator();
+                    self.preview_section(ui);
+                });
 
             ui.separator();
-            self.engine_section(ui);
-
-            ui.separator();
-            self.swaps_section(ui);
-
-            ui.separator();
-            self.preview_section(ui);
-
-            ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                self.action_bar(ui);
-            });
+            self.action_bar(ui);
         });
     }
 }

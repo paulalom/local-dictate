@@ -264,6 +264,30 @@ mod tests {
     }
 
     #[test]
+    fn disabled_cleanup_flags_leave_post_processing_disabled() {
+        let config = AppConfig {
+            capture_hotkey: "Ctrl+Shift+D".to_string(),
+            engine: DEFAULT_ENGINE_ID.to_string(),
+            model: DEFAULT_MODEL_ID.to_string(),
+            engine_path: String::new(),
+            model_path: String::new(),
+            language: "en".to_string(),
+            auto_insert: true,
+            cleanup_disfluencies: false,
+            cleanup_revisions: false,
+            append_trailing_space: true,
+            keyword_swaps: Vec::new(),
+        };
+
+        let settings = config.to_settings().unwrap();
+        let text = "Um, I'm gonna test, I want to test, I'm going to test this now.";
+
+        assert!(!settings.post_processing().cleanup_disfluencies());
+        assert!(!settings.post_processing().cleanup_revisions());
+        assert_eq!(settings.post_processing().apply(text), text);
+    }
+
+    #[test]
     fn defaults_to_bundled_whisper_cpp_and_base_english() {
         let config = AppConfig::default();
 

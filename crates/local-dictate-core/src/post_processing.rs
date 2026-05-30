@@ -896,6 +896,14 @@ mod tests {
     }
 
     #[test]
+    fn leaves_cleanup_candidates_unchanged_when_cleanup_flags_are_disabled() {
+        let settings = PostProcessingSettings::default();
+        let text = "Um, I said, this is now, I'm gonna like test, I want to test, this is, I'm going to test this now.";
+
+        assert_eq!(settings.apply(text), text);
+    }
+
+    #[test]
     fn keeps_literal_short_intro_before_final_clause() {
         let settings = PostProcessingSettings::default().with_cleanup_revisions(true);
 
