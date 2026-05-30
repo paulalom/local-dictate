@@ -37,12 +37,16 @@ cargo run -p local-dictate-cli -- `
   --audio .\recordings\sample.wav `
   --language en `
   --capture-hotkey Ctrl+Win `
+  --cleanup-disfluencies `
   --swap peers=PRs
 ```
 
 `--swap <from=to>` can be repeated for post-processing keyword swaps. Swaps match whole keywords
 case-insensitively, so `--swap peers=PRs` changes `peers` or `Peers` to `PRs` without changing
 words like `appears`.
+
+`--cleanup-disfluencies` enables local post-processing for common dictation cleanup, including
+filler words, immediate repeated words or phrases, and simple hyphenated stutter starts.
 
 `--capture-hotkey` validates the push-to-talk hotkey setting that the live voice capture surface will
 use. It defaults to `Ctrl+Win` on Windows, `Ctrl+Cmd` on macOS, and `Ctrl+Super` on Linux and
@@ -121,11 +125,12 @@ The app saves `settings.toml` in the operating system's config directory. It cur
 - Voice capture hotkey.
 - Whisper engine, model preset, optional advanced paths, and language.
 - Automatic insertion and optional trailing spaces after inserted dictation.
+- Optional local cleanup for stutters, fillers, and immediate repeated words or phrases.
 - Post-processing keyword swaps.
 
 When the hotkey is held, the app captures microphone audio and shows a small always-on-top overlay.
-When the hotkey is released, it transcribes the capture, applies keyword swaps, and inserts the
-processed text into the focused text field. Captured audio is written only to short-lived temporary
+When the hotkey is released, it transcribes the capture, applies local post-processing, and inserts
+the processed text into the focused text field. Captured audio is written only to short-lived temporary
 storage for `whisper-cli` processing and is deleted immediately after transcription completes. The
 app does not save transcript files or display dictated text in the UI.
 

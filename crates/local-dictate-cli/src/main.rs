@@ -123,10 +123,22 @@ impl CliArguments {
             .map(|value| parse_keyword_swap(value))
             .collect::<Result<Vec<_>, _>>()?;
 
+        let cleanup_disfluencies =
+            self.flag_enabled("cleanup-disfluencies") || self.flag_enabled("clean-up-dictation");
+
         Ok(DictationSettings::new(
             capture_hotkey,
-            PostProcessingSettings::new(keyword_swaps),
+            PostProcessingSettings::new(keyword_swaps)
+                .with_cleanup_disfluencies(cleanup_disfluencies),
         ))
+    }
+
+    fn flag_enabled(&self, key: &str) -> bool {
+        self.values.get(key).is_some_and(|values| {
+            values
+                .first()
+                .is_none_or(|value| !value.eq_ignore_ascii_case("false"))
+        })
     }
 }
 
@@ -147,9 +159,9 @@ fn print_usage() {
 local-dictate CLI
 
 Usage:
-  local-dictate-cli --engine <whisper-cli> --model <ggml-model> --audio <wav-file> [--language en] [--capture-hotkey Ctrl+Win] [--swap peers=PRs]
+  local-dictate-cli --engine <whisper-cli> --model <ggml-model> --audio <wav-file> [--language en] [--capture-hotkey Ctrl+Win] [--cleanup-disfluencies] [--swap peers=PRs]
 
 Example:
-  cargo run -p local-dictate-cli -- --engine .\\engines\\whisper-cli.exe --model .\\models\\ggml-base.en.bin --audio .\\recordings\\sample.wav --language en --capture-hotkey Ctrl+Win --swap peers=PRs"
+  cargo run -p local-dictate-cli -- --engine .\\engines\\whisper-cli.exe --model .\\models\\ggml-base.en.bin --audio .\\recordings\\sample.wav --language en --capture-hotkey Ctrl+Win --cleanup-disfluencies --swap peers=PRs"
     );
 }

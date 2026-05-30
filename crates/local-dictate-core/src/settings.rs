@@ -11,7 +11,7 @@ const DEFAULT_CAPTURE_HOTKEY: &str = "Ctrl+Cmd";
 #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
 const DEFAULT_CAPTURE_HOTKEY: &str = "Ctrl+Super";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DictationSettings {
     capture_hotkey: CaptureHotkey,
     post_processing: PostProcessingSettings,
@@ -41,15 +41,6 @@ impl DictationSettings {
 
     pub fn post_processing(&self) -> &PostProcessingSettings {
         &self.post_processing
-    }
-}
-
-impl Default for DictationSettings {
-    fn default() -> Self {
-        Self {
-            capture_hotkey: CaptureHotkey::default(),
-            post_processing: PostProcessingSettings::default(),
-        }
     }
 }
 

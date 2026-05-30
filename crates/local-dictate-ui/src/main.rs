@@ -52,6 +52,7 @@ struct SettingsApp {
     model_path: String,
     language: String,
     auto_insert: bool,
+    cleanup_disfluencies: bool,
     append_trailing_space: bool,
     swaps: Vec<SwapRow>,
     new_from: String,
@@ -130,6 +131,7 @@ impl SettingsApp {
             model_path: config.model_path,
             language: config.language,
             auto_insert: config.auto_insert,
+            cleanup_disfluencies: config.cleanup_disfluencies,
             append_trailing_space: config.append_trailing_space,
             swaps: config
                 .keyword_swaps
@@ -138,7 +140,7 @@ impl SettingsApp {
                 .collect(),
             new_from: String::new(),
             new_to: String::new(),
-            preview_input: "Ask peers to review this before we merge.".to_string(),
+            preview_input: "Um, ask peers peers to review this before we merge.".to_string(),
             status,
             recording_hotkey: false,
             dirty: false,
@@ -246,6 +248,7 @@ impl SettingsApp {
         self.model_path = config.model_path;
         self.language = config.language;
         self.auto_insert = config.auto_insert;
+        self.cleanup_disfluencies = config.cleanup_disfluencies;
         self.append_trailing_space = config.append_trailing_space;
         self.swaps = config
             .keyword_swaps
@@ -308,6 +311,7 @@ impl SettingsApp {
             model_path: self.model_path.trim().to_string(),
             language: self.language.trim().to_string(),
             auto_insert: self.auto_insert,
+            cleanup_disfluencies: self.cleanup_disfluencies,
             append_trailing_space: self.append_trailing_space,
             keyword_swaps,
         };
@@ -327,7 +331,9 @@ impl SettingsApp {
             .filter_map(|row| KeywordSwap::new(row.from.trim(), row.to.trim()).ok())
             .collect::<Vec<_>>();
 
-        PostProcessingSettings::new(swaps).apply(&self.preview_input)
+        PostProcessingSettings::new(swaps)
+            .with_cleanup_disfluencies(self.cleanup_disfluencies)
+            .apply(&self.preview_input)
     }
 
     fn poll_hotkey_events(&mut self) {
@@ -701,6 +707,18 @@ impl SettingsApp {
 
                 ui.label("Insert");
                 if ui.checkbox(&mut self.auto_insert, "Automatic").changed() {
+                    self.mark_dirty();
+                }
+                ui.end_row();
+
+                ui.label("Cleanup");
+                if ui
+                    .checkbox(
+                        &mut self.cleanup_disfluencies,
+                        "Remove stutters and fillers",
+                    )
+                    .changed()
+                {
                     self.mark_dirty();
                 }
                 ui.end_row();
