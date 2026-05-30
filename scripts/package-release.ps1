@@ -9,7 +9,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$BinaryDir,
 
-    [string]$OutputDir = "dist"
+    [string]$OutputDir = "dist",
+
+    [switch]$RequireEngine
 )
 
 $ErrorActionPreference = "Stop"
@@ -64,6 +66,36 @@ function Copy-Executable {
     }
 }
 
+function Copy-EngineAssets {
+    $engineRoot = Join-Path $repoRoot "engines"
+    $destinationRoot = Join-Path $packageDir "engines"
+    $engineFileName = if ($Platform -eq "windows-x64") {
+        "whisper-cli.exe"
+    } else {
+        "whisper-cli"
+    }
+    $enginePath = Join-Path $engineRoot $engineFileName
+
+    if (-not (Test-Path -LiteralPath $enginePath -PathType Leaf)) {
+        if ($RequireEngine) {
+            throw "Missing bundled whisper.cpp engine: $enginePath"
+        }
+
+        Write-Warning "Skipping bundled whisper.cpp engine; missing $enginePath"
+        return
+    }
+
+    New-Item -ItemType Directory -Force -Path $destinationRoot | Out-Null
+    Copy-Item -LiteralPath $enginePath -Destination (Join-Path $destinationRoot $engineFileName) -Force
+
+    if ($Platform -eq "windows-x64") {
+        Get-ChildItem -LiteralPath $engineRoot -Filter "*.dll" -File |
+            Copy-Item -Destination $destinationRoot -Force
+    } else {
+        & chmod +x (Join-Path $destinationRoot $engineFileName)
+    }
+}
+
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $binaryRoot = Resolve-RepoPath $BinaryDir
 $outputRoot = Resolve-RepoPath $OutputDir
@@ -82,6 +114,7 @@ New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
 
 Copy-Item -LiteralPath (Join-Path $repoRoot "README.md") -Destination $packageDir
 Copy-Item -LiteralPath (Join-Path $repoRoot "THIRD_PARTY_NOTICES.md") -Destination $packageDir
+Copy-EngineAssets
 
 switch ($Platform) {
     "windows-x64" {

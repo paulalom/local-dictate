@@ -74,9 +74,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-whisper-as
 That script downloads the pinned `whisper.cpp` Windows binary release, installs
 `whisper-cli.exe` and its DLL runtime files into `engines/`, and installs the
 `ggml-base.en.bin` model into `models/`. The model download is validated against
-the upstream SHA-1 listed by `whisper.cpp`. On macOS and Linux, place a
-compatible `whisper-cli` binary at `engines/whisper-cli` and the selected model
-at `models/ggml-<model>.bin`.
+the upstream SHA-1 listed by `whisper.cpp`.
+
+For local macOS and Linux release prep, build the pinned `whisper.cpp` engine
+from source with:
+
+```powershell
+pwsh ./scripts/build-whisper-cpp.ps1 -Platform macos-universal
+pwsh ./scripts/build-whisper-cpp.ps1 -Platform linux-x64
+```
+
+That script installs the compatible `whisper-cli` binary to `engines/`. Place
+the selected model at `models/ggml-<model>.bin`.
 
 Fully bundled app builds should include:
 
@@ -84,12 +93,11 @@ Fully bundled app builds should include:
 - `models/ggml-base.en.bin` for the default English model.
 - `THIRD_PARTY_NOTICES.md` with the app distribution.
 
-The GitHub release workflow currently publishes app packages for Windows,
-macOS, and Linux. Those packages include the Local Dictate UI and CLI binaries,
-README, and third-party notices. The Whisper engine and model are still
-installed separately: Windows packages include `scripts/install-whisper-assets.ps1`,
-while macOS and Linux users should place a compatible `whisper-cli` binary and
-`ggml` model in `engines/` and `models/`.
+The GitHub release workflow publishes app packages for Windows, macOS, and
+Linux. Those packages include the Local Dictate UI and CLI binaries, a bundled
+`whisper.cpp` `whisper-cli` engine for the target operating system, README, and
+third-party notices. The default `ggml` model is still installed separately to
+avoid duplicating a large model file in every OS package.
 
 ## Settings App
 
@@ -153,7 +161,8 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The release workflow builds and tests the workspace, then uploads:
+The release workflow builds and tests the workspace, builds or installs the
+pinned `whisper.cpp` CLI engine, then uploads:
 
 - `local-dictate-<version>-windows-x64.zip`
 - `local-dictate-<version>-macos-universal.zip`
