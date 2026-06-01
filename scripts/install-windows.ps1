@@ -7,6 +7,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$appDescription = "Local, no-network voice dictation"
 
 function Resolve-FullPath {
     param([Parameter(Mandatory = $true)][string]$Path)
@@ -115,6 +116,123 @@ function Get-ShortcutTargetPath {
     }
 }
 
+function Write-UInt16 {
+    param(
+        [Parameter(Mandatory = $true)][System.IO.BinaryWriter]$Writer,
+        [Parameter(Mandatory = $true)][uint16]$Value
+    )
+
+    $Writer.Write($Value)
+}
+
+function Write-UInt32 {
+    param(
+        [Parameter(Mandatory = $true)][System.IO.BinaryWriter]$Writer,
+        [Parameter(Mandatory = $true)][uint32]$Value
+    )
+
+    $Writer.Write($Value)
+}
+
+function Write-Int32 {
+    param(
+        [Parameter(Mandatory = $true)][System.IO.BinaryWriter]$Writer,
+        [Parameter(Mandatory = $true)][int32]$Value
+    )
+
+    $Writer.Write($Value)
+}
+
+function Write-LocalDictateIcon {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $size = 32
+    $rgba = New-Object byte[] ($size * $size * 4)
+
+    for ($y = 0; $y -lt $size; $y += 1) {
+        for ($x = 0; $x -lt $size; $x += 1) {
+            $index = (($y * $size) + $x) * 4
+            $dx = $x - 16
+            $dy = $y - 16
+            $inDisc = (($dx * $dx) + ($dy * $dy)) -le (15 * 15)
+
+            if ($inDisc) {
+                $rgba[$index] = 32
+                $rgba[$index + 1] = 88
+                $rgba[$index + 2] = 120
+                $rgba[$index + 3] = 255
+            }
+
+            $micBody = (12 -le $x -and $x -le 19) -and (7 -le $y -and $y -le 19)
+            $micStem = (15 -le $x -and $x -le 16) -and (21 -le $y -and $y -le 25)
+            $micBase = (11 -le $x -and $x -le 20) -and (25 -le $y -and $y -le 26)
+            $micCurve = (9 -le $x -and $x -le 22) -and
+                (17 -le $y -and $y -le 23) -and
+                -not (12 -le $x -and $x -le 19)
+
+            if ($micBody -or $micStem -or $micBase -or $micCurve) {
+                $rgba[$index] = 248
+                $rgba[$index + 1] = 252
+                $rgba[$index + 2] = 255
+                $rgba[$index + 3] = 255
+            }
+        }
+    }
+
+    $parent = Split-Path -Parent $Path
+    New-Item -ItemType Directory -Force -Path $parent | Out-Null
+
+    $pixelBytes = $size * $size * 4
+    $maskBytes = [int]([Math]::Ceiling($size / 32.0) * 4 * $size)
+    $imageBytes = 40 + $pixelBytes + $maskBytes
+    $stream = [System.IO.File]::Create($Path)
+    $writer = New-Object System.IO.BinaryWriter($stream)
+
+    try {
+        Write-UInt16 -Writer $writer -Value 0
+        Write-UInt16 -Writer $writer -Value 1
+        Write-UInt16 -Writer $writer -Value 1
+
+        $writer.Write([byte]$size)
+        $writer.Write([byte]$size)
+        $writer.Write([byte]0)
+        $writer.Write([byte]0)
+        Write-UInt16 -Writer $writer -Value 1
+        Write-UInt16 -Writer $writer -Value 32
+        Write-UInt32 -Writer $writer -Value $imageBytes
+        Write-UInt32 -Writer $writer -Value 22
+
+        Write-UInt32 -Writer $writer -Value 40
+        Write-Int32 -Writer $writer -Value $size
+        Write-Int32 -Writer $writer -Value ($size * 2)
+        Write-UInt16 -Writer $writer -Value 1
+        Write-UInt16 -Writer $writer -Value 32
+        Write-UInt32 -Writer $writer -Value 0
+        Write-UInt32 -Writer $writer -Value $pixelBytes
+        Write-Int32 -Writer $writer -Value 0
+        Write-Int32 -Writer $writer -Value 0
+        Write-UInt32 -Writer $writer -Value 0
+        Write-UInt32 -Writer $writer -Value 0
+
+        for ($y = $size - 1; $y -ge 0; $y -= 1) {
+            for ($x = 0; $x -lt $size; $x += 1) {
+                $index = (($y * $size) + $x) * 4
+                $writer.Write($rgba[$index + 2])
+                $writer.Write($rgba[$index + 1])
+                $writer.Write($rgba[$index])
+                $writer.Write($rgba[$index + 3])
+            }
+        }
+
+        for ($index = 0; $index -lt $maskBytes; $index += 1) {
+            $writer.Write([byte]0)
+        }
+    } finally {
+        $writer.Dispose()
+        $stream.Dispose()
+    }
+}
+
 function Get-PowerShellExecutable {
     $windowsPowerShell = Get-Command powershell.exe -ErrorAction SilentlyContinue
     if ($windowsPowerShell) {
@@ -180,7 +298,8 @@ function Copy-PackagePayload {
 function Update-ExistingTaskbarPins {
     param(
         [Parameter(Mandatory = $true)][string]$ExecutablePath,
-        [Parameter(Mandatory = $true)][string]$WorkingDirectory
+        [Parameter(Mandatory = $true)][string]$WorkingDirectory,
+        [Parameter(Mandatory = $true)][string]$IconLocation
     )
 
     $taskbarDir = Join-Path $env:APPDATA "Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar"
@@ -206,8 +325,8 @@ function Update-ExistingTaskbarPins {
                 -Path $pin.FullName `
                 -TargetPath $ExecutablePath `
                 -WorkingDirectory $WorkingDirectory `
-                -Description "Local Dictate" `
-                -IconLocation $ExecutablePath
+                -Description $appDescription `
+                -IconLocation $IconLocation
             $updatedCount += 1
         }
     }
@@ -230,6 +349,10 @@ if (-not (Test-Path -LiteralPath $installedUiPath -PathType Leaf)) {
     throw "Installed UI executable is missing: $installedUiPath"
 }
 
+$iconPath = Join-Path $resolvedInstallDir "LocalDictate.ico"
+Write-LocalDictateIcon -Path $iconPath
+$iconLocation = "$iconPath,0"
+
 $startMenuDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Local Dictate"
 $startMenuShortcut = Join-Path $startMenuDir "Local Dictate.lnk"
 $uninstallScript = Join-Path $resolvedInstallDir "Uninstall-LocalDictate.ps1"
@@ -239,8 +362,8 @@ New-Shortcut `
     -Path $startMenuShortcut `
     -TargetPath $installedUiPath `
     -WorkingDirectory $resolvedInstallDir `
-    -Description "Local Dictate" `
-    -IconLocation $installedUiPath
+    -Description $appDescription `
+    -IconLocation $iconLocation
 
 if (Test-Path -LiteralPath $uninstallScript -PathType Leaf) {
     $powerShellPath = Get-PowerShellExecutable
@@ -249,8 +372,8 @@ if (Test-Path -LiteralPath $uninstallScript -PathType Leaf) {
         -TargetPath $powerShellPath `
         -Arguments "-NoProfile -ExecutionPolicy Bypass -File `"$uninstallScript`"" `
         -WorkingDirectory $env:USERPROFILE `
-        -Description "Uninstall Local Dictate" `
-        -IconLocation $installedUiPath
+        -Description "Remove Local Dictate from this user account" `
+        -IconLocation $iconLocation
 }
 
 if ($CreateDesktopShortcut) {
@@ -259,13 +382,14 @@ if ($CreateDesktopShortcut) {
         -Path $desktopShortcut `
         -TargetPath $installedUiPath `
         -WorkingDirectory $resolvedInstallDir `
-        -Description "Local Dictate" `
-        -IconLocation $installedUiPath
+        -Description $appDescription `
+        -IconLocation $iconLocation
 }
 
 $updatedTaskbarPins = Update-ExistingTaskbarPins `
     -ExecutablePath $installedUiPath `
-    -WorkingDirectory $resolvedInstallDir
+    -WorkingDirectory $resolvedInstallDir `
+    -IconLocation $iconLocation
 
 Write-Host "Installed Local Dictate to $resolvedInstallDir"
 Write-Host "Start Menu shortcut: $startMenuShortcut"

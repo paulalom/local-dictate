@@ -119,11 +119,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-LocalDictate.ps1
 ```
 
 The installer copies the package to `%LOCALAPPDATA%\Programs\Local Dictate`,
-creates a Start Menu entry, and refreshes any existing Local Dictate taskbar
-pin it can identify. For a stable taskbar shortcut, pin Local Dictate from the
-Start Menu entry after installing. Future releases can be installed the same
-way; the shortcut target stays on the fixed install directory instead of the
-versioned extracted release folder.
+creates a Start Menu entry with the Local Dictate icon and description, and
+refreshes any existing Local Dictate taskbar pin it can identify. For a stable
+taskbar shortcut, pin Local Dictate from the Start Menu entry after installing.
+Future releases can be installed the same way; the shortcut target stays on the
+fixed install directory instead of the versioned extracted release folder.
 
 To install and launch the app immediately:
 
@@ -174,6 +174,11 @@ a Terminal session. On Linux, launch from a `.desktop` entry with
 `Terminal=false`; tray support uses the standard GTK/AppIndicator stack and may
 require the matching system packages for the desktop environment. Starter
 packaging templates live in `packaging/`.
+
+On Windows, launching Local Dictate while it is already running asks the running
+copy to show its settings window and exits the second launch. If the second
+launch is from a newer app version, it asks the older copy to exit and then
+continues with the newer version.
 
 Build a standalone binary for the current OS:
 

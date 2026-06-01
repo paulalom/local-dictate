@@ -5,11 +5,13 @@ mod audio;
 mod config;
 mod focus;
 mod hotkey;
+mod icon;
+mod single_instance;
 mod text_input;
 mod transcription_assets;
 
 use std::path::PathBuf;
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::Duration;
 
@@ -18,27 +20,40 @@ use audio::AudioRecorder;
 use config::{AppConfig, KeywordSwapConfig};
 use eframe::egui;
 use hotkey::{HotkeyEvent, HotkeyMonitor};
+use icon::local_dictate_icon_data;
 use local_dictate_core::{
     KeywordSwap, PostProcessingSettings, TranscriptionEngine, TranscriptionRequest,
     WhisperCliEngineOptions, WhisperCliTranscriptionEngine,
 };
+use single_instance::{InstanceCommand, SingleInstance, StartupAction};
 use transcription_assets::{
     CUSTOM_ENGINE_ID, CUSTOM_MODEL_ID, ENGINE_OPTIONS, MODEL_OPTIONS, engine_label, model_label,
     resolve_transcription_assets,
 };
 
 fn main() -> eframe::Result {
+    let single_instance = match single_instance::prepare_startup() {
+        StartupAction::Run(single_instance) => single_instance,
+        StartupAction::Exit => return Ok(()),
+    };
+    let mut single_instance = single_instance;
+    let icon_data = local_dictate_icon_data();
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([760.0, 620.0])
-            .with_min_inner_size([560.0, 460.0]),
+            .with_min_inner_size([560.0, 460.0])
+            .with_icon(Arc::new(egui::IconData {
+                rgba: icon_data.rgba,
+                width: icon_data.width,
+                height: icon_data.height,
+            })),
         ..Default::default()
     };
 
     eframe::run_native(
         "Local Dictate Settings",
         native_options,
-        Box::new(|_creation_context| Ok(Box::new(SettingsApp::new()))),
+        Box::new(move |_creation_context| Ok(Box::new(SettingsApp::new(single_instance.take())))),
     )
 }
 
@@ -70,12 +85,13 @@ struct SettingsApp {
     capture_context: Option<CaptureContext>,
     runtime_state: RuntimeState,
     tray: Option<AppTray>,
+    single_instance: Option<SingleInstance>,
     window_hidden: bool,
     exit_requested: bool,
 }
 
 impl SettingsApp {
-    fn new() -> Self {
+    fn new(single_instance: Option<SingleInstance>) -> Self {
         let (hotkey_sender, hotkey_events) = mpsc::channel();
         let (runtime_sender, runtime_events) = mpsc::channel();
 
@@ -90,6 +106,7 @@ impl SettingsApp {
                     hotkey_events,
                     runtime_sender,
                     runtime_events,
+                    single_instance,
                 )
             }
             Err(error) => {
@@ -102,6 +119,7 @@ impl SettingsApp {
                     hotkey_events,
                     runtime_sender,
                     runtime_events,
+                    single_instance,
                 )
             }
         }
@@ -115,6 +133,7 @@ impl SettingsApp {
         hotkey_events: mpsc::Receiver<HotkeyEvent>,
         runtime_sender: mpsc::Sender<RuntimeEvent>,
         runtime_events: mpsc::Receiver<RuntimeEvent>,
+        single_instance: Option<SingleInstance>,
     ) -> Self {
         let hotkey_monitor =
             HotkeyMonitor::start(&config.capture_hotkey, hotkey_sender.clone()).ok();
@@ -153,6 +172,7 @@ impl SettingsApp {
             capture_context: None,
             runtime_state: RuntimeState::Idle,
             tray: tray.ok(),
+            single_instance,
             window_hidden: false,
             exit_requested: false,
         };
@@ -379,6 +399,18 @@ impl SettingsApp {
         match tray.poll_action() {
             Some(TrayAction::Show) => self.show_window(context),
             Some(TrayAction::Exit) => self.exit_requested = true,
+            None => {}
+        }
+    }
+
+    fn poll_single_instance_commands(&mut self, context: &egui::Context) {
+        let Some(single_instance) = &mut self.single_instance else {
+            return;
+        };
+
+        match single_instance.poll_command() {
+            Some(InstanceCommand::Show) => self.show_window(context),
+            Some(InstanceCommand::Exit) => self.exit_requested = true,
             None => {}
         }
     }
@@ -838,6 +870,7 @@ impl eframe::App for SettingsApp {
     fn logic(&mut self, context: &egui::Context, _frame: &mut eframe::Frame) {
         context.request_repaint_after(Duration::from_millis(25));
         self.poll_tray_events(context);
+        self.poll_single_instance_commands(context);
         self.handle_window_lifecycle(context);
         self.poll_hotkey_events();
         self.poll_runtime_events();
