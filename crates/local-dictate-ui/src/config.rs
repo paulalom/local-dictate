@@ -20,6 +20,8 @@ pub struct AppConfig {
     pub model_path: String,
     pub language: String,
     pub auto_insert: bool,
+    #[serde(default = "default_true")]
+    pub use_clipboard_insert: bool,
     pub cleanup_disfluencies: bool,
     #[serde(default = "default_true")]
     pub cleanup_revisions: bool,
@@ -68,6 +70,7 @@ impl Default for AppConfig {
             model_path: String::new(),
             language: "en".to_string(),
             auto_insert: true,
+            use_clipboard_insert: true,
             cleanup_disfluencies: true,
             cleanup_revisions: true,
             append_trailing_space: true,
@@ -223,6 +226,7 @@ mod tests {
             model_path: "models/ggml-base.en.bin".to_string(),
             language: "en".to_string(),
             auto_insert: true,
+            use_clipboard_insert: true,
             cleanup_disfluencies: true,
             cleanup_revisions: true,
             append_trailing_space: true,
@@ -256,6 +260,7 @@ mod tests {
             model_path: "models/ggml-base.en.bin".to_string(),
             language: "en".to_string(),
             auto_insert: true,
+            use_clipboard_insert: true,
             cleanup_disfluencies: false,
             cleanup_revisions: false,
             append_trailing_space: true,
@@ -282,6 +287,7 @@ mod tests {
             model_path: String::new(),
             language: "en".to_string(),
             auto_insert: true,
+            use_clipboard_insert: true,
             cleanup_disfluencies: false,
             cleanup_revisions: false,
             append_trailing_space: true,
@@ -305,6 +311,7 @@ mod tests {
         assert_eq!(config.model, "base.en");
         assert!(config.engine_path.is_empty());
         assert!(config.model_path.is_empty());
+        assert!(config.use_clipboard_insert);
         assert!(config.cleanup_disfluencies);
         assert!(config.cleanup_revisions);
         assert!(config.append_trailing_space);
@@ -327,6 +334,7 @@ keyword_swaps = []
 
         assert_eq!(config.engine, "bundled-whisper-cpp");
         assert_eq!(config.model, "base.en");
+        assert!(config.use_clipboard_insert);
         assert!(config.append_trailing_space);
         assert_eq!(config.hide_to_tray, !cfg!(target_os = "linux"));
         assert!(config.cleanup_disfluencies);

@@ -67,6 +67,7 @@ struct SettingsApp {
     model_path: String,
     language: String,
     auto_insert: bool,
+    use_clipboard_insert: bool,
     cleanup_disfluencies: bool,
     cleanup_revisions: bool,
     append_trailing_space: bool,
@@ -150,6 +151,7 @@ impl SettingsApp {
             model_path: config.model_path,
             language: config.language,
             auto_insert: config.auto_insert,
+            use_clipboard_insert: config.use_clipboard_insert,
             cleanup_disfluencies: config.cleanup_disfluencies,
             cleanup_revisions: config.cleanup_revisions,
             append_trailing_space: config.append_trailing_space,
@@ -266,6 +268,7 @@ impl SettingsApp {
         self.model_path = config.model_path;
         self.language = config.language;
         self.auto_insert = config.auto_insert;
+        self.use_clipboard_insert = config.use_clipboard_insert;
         self.cleanup_disfluencies = config.cleanup_disfluencies;
         self.cleanup_revisions = config.cleanup_revisions;
         self.append_trailing_space = config.append_trailing_space;
@@ -330,6 +333,7 @@ impl SettingsApp {
             model_path: self.model_path.trim().to_string(),
             language: self.language.trim().to_string(),
             auto_insert: self.auto_insert,
+            use_clipboard_insert: self.use_clipboard_insert,
             cleanup_disfluencies: self.cleanup_disfluencies,
             cleanup_revisions: self.cleanup_revisions,
             append_trailing_space: self.append_trailing_space,
@@ -747,6 +751,18 @@ impl SettingsApp {
                 }
                 ui.end_row();
 
+                ui.label("Paste");
+                if ui
+                    .add_enabled(
+                        self.auto_insert,
+                        egui::Checkbox::new(&mut self.use_clipboard_insert, "Use clipboard"),
+                    )
+                    .changed()
+                {
+                    self.save_settings();
+                }
+                ui.end_row();
+
                 ui.label("Cleanup");
                 if ui
                     .checkbox(
@@ -1071,7 +1087,12 @@ fn process_capture_inner(
     if config.auto_insert {
         focus::restore_focus(capture_context.focus_target);
         let text = insertion_text(text, config.append_trailing_space);
-        text_input::insert_text(&text).map_err(|error| error.to_string())?;
+        let insert_mode = if config.use_clipboard_insert {
+            text_input::TextInsertMode::Clipboard
+        } else {
+            text_input::TextInsertMode::Typing
+        };
+        text_input::insert_text(&text, insert_mode).map_err(|error| error.to_string())?;
         Ok(RuntimeEvent::Inserted)
     } else {
         Ok(RuntimeEvent::ProcessedWithoutInsert)

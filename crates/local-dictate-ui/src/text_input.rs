@@ -11,9 +11,19 @@ use enigo::{
 const PASTE_SETTLE_DELAY: Duration = Duration::from_millis(50);
 const CLIPBOARD_RESTORE_DELAY: Duration = Duration::from_millis(250);
 
-pub fn insert_text(text: &str) -> Result<(), TextInputError> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextInsertMode {
+    Clipboard,
+    Typing,
+}
+
+pub fn insert_text(text: &str, mode: TextInsertMode) -> Result<(), TextInputError> {
     if text.is_empty() {
         return Ok(());
+    }
+
+    if mode == TextInsertMode::Typing {
+        return type_text(text);
     }
 
     if let Err(error) = paste_text(text) {
