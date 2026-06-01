@@ -66,7 +66,6 @@ struct SettingsApp {
     engine_path: String,
     model_path: String,
     language: String,
-    auto_insert: bool,
     use_clipboard_insert: bool,
     cleanup_disfluencies: bool,
     cleanup_revisions: bool,
@@ -150,7 +149,6 @@ impl SettingsApp {
             engine_path: config.engine_path,
             model_path: config.model_path,
             language: config.language,
-            auto_insert: config.auto_insert,
             use_clipboard_insert: config.use_clipboard_insert,
             cleanup_disfluencies: config.cleanup_disfluencies,
             cleanup_revisions: config.cleanup_revisions,
@@ -267,7 +265,6 @@ impl SettingsApp {
         self.engine_path = config.engine_path;
         self.model_path = config.model_path;
         self.language = config.language;
-        self.auto_insert = config.auto_insert;
         self.use_clipboard_insert = config.use_clipboard_insert;
         self.cleanup_disfluencies = config.cleanup_disfluencies;
         self.cleanup_revisions = config.cleanup_revisions;
@@ -332,7 +329,6 @@ impl SettingsApp {
             engine_path: self.engine_path.trim().to_string(),
             model_path: self.model_path.trim().to_string(),
             language: self.language.trim().to_string(),
-            auto_insert: self.auto_insert,
             use_clipboard_insert: self.use_clipboard_insert,
             cleanup_disfluencies: self.cleanup_disfluencies,
             cleanup_revisions: self.cleanup_revisions,
@@ -385,10 +381,6 @@ impl SettingsApp {
                 RuntimeEvent::NoText => {
                     self.runtime_state = RuntimeState::Idle;
                     self.status = StatusMessage::info("No dictation detected");
-                }
-                RuntimeEvent::ProcessedWithoutInsert => {
-                    self.runtime_state = RuntimeState::Idle;
-                    self.status = StatusMessage::success("Processed dictation");
                 }
                 RuntimeEvent::Failed(error) => {
                     self.runtime_state = RuntimeState::Idle;
@@ -745,18 +737,9 @@ impl SettingsApp {
                 }
                 ui.end_row();
 
-                ui.label("Insert");
-                if ui.checkbox(&mut self.auto_insert, "Automatic").changed() {
-                    self.save_settings();
-                }
-                ui.end_row();
-
                 ui.label("Paste");
                 if ui
-                    .add_enabled(
-                        self.auto_insert,
-                        egui::Checkbox::new(&mut self.use_clipboard_insert, "Use clipboard"),
-                    )
+                    .checkbox(&mut self.use_clipboard_insert, "Use clipboard")
                     .changed()
                 {
                     self.save_settings();
@@ -1017,7 +1000,6 @@ enum RuntimeState {
 enum RuntimeEvent {
     Inserted,
     NoText,
-    ProcessedWithoutInsert,
     Failed(String),
 }
 
@@ -1084,19 +1066,15 @@ fn process_capture_inner(
         return Ok(RuntimeEvent::NoText);
     }
 
-    if config.auto_insert {
-        focus::restore_focus(capture_context.focus_target);
-        let text = insertion_text(text, config.append_trailing_space);
-        let insert_mode = if config.use_clipboard_insert {
-            text_input::TextInsertMode::Clipboard
-        } else {
-            text_input::TextInsertMode::Typing
-        };
-        text_input::insert_text(&text, insert_mode).map_err(|error| error.to_string())?;
-        Ok(RuntimeEvent::Inserted)
+    focus::restore_focus(capture_context.focus_target);
+    let text = insertion_text(text, config.append_trailing_space);
+    let insert_mode = if config.use_clipboard_insert {
+        text_input::TextInsertMode::Clipboard
     } else {
-        Ok(RuntimeEvent::ProcessedWithoutInsert)
-    }
+        text_input::TextInsertMode::Typing
+    };
+    text_input::insert_text(&text, insert_mode).map_err(|error| error.to_string())?;
+    Ok(RuntimeEvent::Inserted)
 }
 
 fn insertion_text(text: &str, append_trailing_space: bool) -> String {
