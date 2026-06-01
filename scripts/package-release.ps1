@@ -138,6 +138,14 @@ function Copy-SetupScripts {
         Copy-Item `
             -LiteralPath (Join-Path (Join-Path $repoRoot "scripts") "uninstall-windows.ps1") `
             -Destination (Join-Path $packageDir "Uninstall-LocalDictate.ps1")
+    } elseif ($Platform -eq "linux-x64") {
+        Copy-Item `
+            -LiteralPath (Join-Path (Join-Path $repoRoot "scripts") "install-linux.sh") `
+            -Destination (Join-Path $packageDir "install-linux.sh")
+
+        if (-not $isWindowsHost) {
+            & chmod +x (Join-Path $packageDir "install-linux.sh")
+        }
     }
 }
 

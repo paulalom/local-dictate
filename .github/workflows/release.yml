@@ -273,14 +273,31 @@ jobs:
           DRAFT_RELEASE: ${{ steps.release.outputs.draft }}
         run: |
           cat > release-notes.md <<EOF
-          Platform packages:
+          ## Windows
 
-          - local-dictate-$RELEASE_VERSION-windows-x64.zip
-          - local-dictate-$RELEASE_VERSION-macos-universal.zip
-          - local-dictate-$RELEASE_VERSION-linux-x64.tar.gz
-          - local-dictate-$RELEASE_VERSION-linux-x64.AppImage
+          Download `local-dictate-$RELEASE_VERSION-windows-x64.zip`, extract it, then run `Install-LocalDictate.ps1` from the extracted folder. The installer creates a per-user install with a Start Menu shortcut, app icon, and shortcut description.
 
-          These packages include the Local Dictate UI and CLI binaries, a bundled whisper.cpp $WHISPER_CPP_VERSION whisper-cli engine, the default $DEFAULT_WHISPER_MODEL ggml model, README, and project notices. On Windows, run Install-LocalDictate.ps1 from the extracted package to install or update the app in a stable per-user location with a Start Menu shortcut, app icon, and shortcut description. On Linux, use the AppImage for the most self-contained desktop package; the tarball is still available for manual extraction and debugging. Other packages can be extracted and run directly; no separate whisper.cpp or model setup is required for the default configuration.
+          ## macOS
+
+          Download `local-dictate-$RELEASE_VERSION-macos-universal.zip`, extract it, then run `Local Dictate.app`.
+
+          ## Linux
+
+          Preferred path: install FUSE support for your distro, then run `local-dictate-$RELEASE_VERSION-linux-x64.AppImage` directly. On Ubuntu 24.04, the FUSE package is `libfuse2t64`.
+
+          FUSE-free install path:
+
+          ```bash
+          chmod +x local-dictate-$RELEASE_VERSION-linux-x64.AppImage
+          ./local-dictate-$RELEASE_VERSION-linux-x64.AppImage --appimage-extract
+          ./squashfs-root/install-linux.sh --appdir ./squashfs-root
+          ```
+
+          The Linux tarball `local-dictate-$RELEASE_VERSION-linux-x64.tar.gz` is also available for manual extraction and debugging.
+
+          ## Included assets
+
+          Packages include the Local Dictate UI and CLI binaries, a bundled whisper.cpp $WHISPER_CPP_VERSION `whisper-cli` engine, the default $DEFAULT_WHISPER_MODEL ggml model, README, and project notices. No separate whisper.cpp or model setup is required for the default configuration.
           EOF
 
           create_args=()

@@ -86,6 +86,7 @@ require_file "$repo_root/engines/whisper-cli"
 require_file "$repo_root/models/$model_file"
 require_file "$repo_root/packaging/linux/local-dictate.desktop"
 require_file "$repo_root/packaging/linux/local-dictate.svg"
+require_file "$repo_root/scripts/install-linux.sh"
 require_file "$linuxdeploy"
 require_file "$appimagetool"
 
@@ -97,7 +98,8 @@ mkdir -p \
   "$appdir/usr/lib/local-dictate/engines" \
   "$appdir/usr/lib/local-dictate/models" \
   "$appdir/usr/share/applications" \
-  "$appdir/usr/share/icons/hicolor/scalable/apps"
+  "$appdir/usr/share/icons/hicolor/scalable/apps" \
+  "$appdir/usr/share/local-dictate"
 
 install -m 0755 "$binary_root/local-dictate-ui" "$appdir/usr/bin/local-dictate-ui"
 install -m 0755 "$binary_root/local-dictate-cli" "$appdir/usr/bin/local-dictate-cli"
@@ -107,6 +109,8 @@ install -m 0644 "$repo_root/packaging/linux/local-dictate.svg" "$appdir/usr/shar
 install -m 0644 "$repo_root/packaging/linux/local-dictate.svg" "$appdir/local-dictate.svg"
 install -m 0644 "$repo_root/packaging/linux/local-dictate.desktop" "$appdir/local-dictate.desktop"
 install -m 0644 "$repo_root/packaging/linux/local-dictate.desktop" "$appdir/usr/share/applications/local-dictate.desktop"
+install -m 0755 "$repo_root/scripts/install-linux.sh" "$appdir/install-linux.sh"
+install -m 0755 "$repo_root/scripts/install-linux.sh" "$appdir/usr/share/local-dictate/install-linux.sh"
 
 library_args=()
 for library_name in \
