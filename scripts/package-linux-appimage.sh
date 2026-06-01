@@ -108,13 +108,35 @@ install -m 0644 "$repo_root/packaging/linux/local-dictate.svg" "$appdir/local-di
 install -m 0644 "$repo_root/packaging/linux/local-dictate.desktop" "$appdir/local-dictate.desktop"
 install -m 0644 "$repo_root/packaging/linux/local-dictate.desktop" "$appdir/usr/share/applications/local-dictate.desktop"
 
+library_args=()
+for library_name in \
+  libayatana-appindicator3.so.1 \
+  libayatana-indicator3.so.7 \
+  libayatana-ido3-0.4.so.0 \
+  libdbusmenu-glib.so.4 \
+  libdbusmenu-gtk3.so.4
+do
+  library_path="$(
+    ldconfig -p |
+      awk -v library_name="$library_name" '$1 == library_name { print $NF; exit }'
+  )"
+
+  if [[ -z "$library_path" ]]; then
+    echo "Missing required AppIndicator library: $library_name" >&2
+    exit 1
+  fi
+
+  library_args+=(--library "$library_path")
+done
+
 "$linuxdeploy" \
   --appdir "$appdir" \
   --desktop-file "$appdir/local-dictate.desktop" \
   --icon-file "$appdir/local-dictate.svg" \
   --executable "$appdir/usr/bin/local-dictate-ui" \
   --executable "$appdir/usr/bin/local-dictate-cli" \
-  --executable "$appdir/usr/lib/local-dictate/engines/whisper-cli"
+  --executable "$appdir/usr/lib/local-dictate/engines/whisper-cli" \
+  "${library_args[@]}"
 
 rm -f "$appdir/AppRun"
 cat > "$appdir/AppRun" <<'EOF'
@@ -123,7 +145,12 @@ set -euo pipefail
 
 appdir="$(dirname "$(readlink -f "$0")")"
 export PATH="$appdir/usr/bin:$PATH"
+export LD_LIBRARY_PATH="$appdir/usr/lib:${LD_LIBRARY_PATH:-}"
 export LOCAL_DICTATE_ASSET_DIR="$appdir/usr/lib/local-dictate"
+
+if [[ -d "$appdir/usr/lib/gio/modules" ]]; then
+  export GIO_MODULE_DIR="$appdir/usr/lib/gio/modules"
+fi
 
 exec "$appdir/usr/bin/local-dictate-ui" "$@"
 EOF
