@@ -197,7 +197,7 @@ jobs:
           - local-dictate-$RELEASE_VERSION-macos-universal.zip
           - local-dictate-$RELEASE_VERSION-linux-x64.tar.gz
 
-          These packages include the Local Dictate UI and CLI binaries, a bundled whisper.cpp $WHISPER_CPP_VERSION whisper-cli engine, the default $DEFAULT_WHISPER_MODEL ggml model, README, and project notices. Extract the package and run the app; no separate whisper.cpp or model setup is required for the default configuration.
+          These packages include the Local Dictate UI and CLI binaries, a bundled whisper.cpp $WHISPER_CPP_VERSION whisper-cli engine, the default $DEFAULT_WHISPER_MODEL ggml model, README, and project notices. On Windows, run Install-LocalDictate.ps1 from the extracted package to install or update the app in a stable per-user location with a Start Menu shortcut. Other packages can be extracted and run directly; no separate whisper.cpp or model setup is required for the default configuration.
           EOF
 
           create_args=()

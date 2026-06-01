@@ -132,6 +132,12 @@ function Copy-SetupScripts {
         Copy-Item `
             -LiteralPath (Join-Path (Join-Path $repoRoot "scripts") "install-whisper-assets.ps1") `
             -Destination (Join-Path $scriptsDir "install-whisper-assets.ps1")
+        Copy-Item `
+            -LiteralPath (Join-Path (Join-Path $repoRoot "scripts") "install-windows.ps1") `
+            -Destination (Join-Path $packageDir "Install-LocalDictate.ps1")
+        Copy-Item `
+            -LiteralPath (Join-Path (Join-Path $repoRoot "scripts") "uninstall-windows.ps1") `
+            -Destination (Join-Path $packageDir "Uninstall-LocalDictate.ps1")
     }
 }
 

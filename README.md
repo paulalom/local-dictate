@@ -109,6 +109,34 @@ Linux. Those packages include the Local Dictate UI and CLI binaries, a bundled
 configuration is runnable after extracting the package; custom model paths are
 only needed for non-default models.
 
+### Windows Install and Updates
+
+The Windows release zip includes a per-user installer script. Extract the zip,
+then run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-LocalDictate.ps1
+```
+
+The installer copies the package to `%LOCALAPPDATA%\Programs\Local Dictate`,
+creates a Start Menu entry, and refreshes any existing Local Dictate taskbar
+pin it can identify. For a stable taskbar shortcut, pin Local Dictate from the
+Start Menu entry after installing. Future releases can be installed the same
+way; the shortcut target stays on the fixed install directory instead of the
+versioned extracted release folder.
+
+To install and launch the app immediately:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-LocalDictate.ps1 -Launch
+```
+
+To uninstall, use the Start Menu "Uninstall Local Dictate" shortcut or run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\Local Dictate\Uninstall-LocalDictate.ps1"
+```
+
 ## Settings App
 
 Run the native settings UI:
@@ -179,6 +207,9 @@ pinned `whisper.cpp` CLI engine, then uploads:
 - `local-dictate-<version>-windows-x64.zip`
 - `local-dictate-<version>-macos-universal.zip`
 - `local-dictate-<version>-linux-x64.tar.gz`
+
+The Windows zip includes `Install-LocalDictate.ps1`, which installs or updates
+the app in a stable per-user location and creates the Start Menu shortcut.
 
 You can also run the `Release` workflow manually from GitHub Actions and provide
 the release tag, such as `v0.1.0`. Manual runs default to draft releases.
