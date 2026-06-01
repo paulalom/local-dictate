@@ -21,6 +21,8 @@ impl fmt::Debug for AppTray {
 
 impl AppTray {
     pub fn new() -> Result<Self, String> {
+        initialize_platform_tray()?;
+
         let show_item = MenuItem::new("Show Local Dictate", true, None);
         let exit_item = MenuItem::new("Exit", true, None);
         let separator = PredefinedMenuItem::separator();
@@ -81,4 +83,18 @@ pub enum TrayAction {
 fn local_dictate_icon() -> Result<Icon, String> {
     let data = local_dictate_icon_data();
     Icon::from_rgba(data.rgba, data.width, data.height).map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "linux")]
+fn initialize_platform_tray() -> Result<(), String> {
+    if gtk::is_initialized() {
+        return Ok(());
+    }
+
+    gtk::init().map_err(|error| format!("GTK initialization failed: {error}"))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn initialize_platform_tray() -> Result<(), String> {
+    Ok(())
 }

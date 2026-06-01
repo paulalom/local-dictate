@@ -23,6 +23,8 @@ env:
   CARGO_TERM_COLOR: always
   WHISPER_CPP_VERSION: v1.8.4
   DEFAULT_WHISPER_MODEL: base.en
+  LINUXDEPLOY_URL: https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+  APPIMAGETOOL_URL: https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
 
 jobs:
   build:
@@ -140,11 +142,32 @@ jobs:
             -RequireModel `
             -DefaultModel "${{ env.DEFAULT_WHISPER_MODEL }}"
 
+      - name: Install Linux AppImage packaging tools
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          mkdir -p .local/bin
+          curl -L "$LINUXDEPLOY_URL" -o .local/bin/linuxdeploy-x86_64.AppImage
+          curl -L "$APPIMAGETOOL_URL" -o .local/bin/appimagetool-x86_64.AppImage
+          chmod +x .local/bin/linuxdeploy-x86_64.AppImage .local/bin/appimagetool-x86_64.AppImage
+
+      - name: Package Linux AppImage
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          bash ./scripts/package-linux-appimage.sh \
+            --version "${{ steps.release.outputs.version }}" \
+            --binary-dir "${{ matrix.binary_dir }}" \
+            --output-dir dist \
+            --linuxdeploy .local/bin/linuxdeploy-x86_64.AppImage \
+            --appimagetool .local/bin/appimagetool-x86_64.AppImage \
+            --default-model "${{ env.DEFAULT_WHISPER_MODEL }}"
+
       - name: Upload release asset
         uses: actions/upload-artifact@v7.0.1
         with:
           name: release-${{ matrix.platform }}
-          path: dist/local-dictate-${{ steps.release.outputs.version }}-${{ matrix.platform }}.${{ matrix.extension }}
+          path: dist/local-dictate-${{ steps.release.outputs.version }}-${{ matrix.platform }}.*
           if-no-files-found: error
 
   publish:
@@ -196,8 +219,9 @@ jobs:
           - local-dictate-$RELEASE_VERSION-windows-x64.zip
           - local-dictate-$RELEASE_VERSION-macos-universal.zip
           - local-dictate-$RELEASE_VERSION-linux-x64.tar.gz
+          - local-dictate-$RELEASE_VERSION-linux-x64.AppImage
 
-          These packages include the Local Dictate UI and CLI binaries, a bundled whisper.cpp $WHISPER_CPP_VERSION whisper-cli engine, the default $DEFAULT_WHISPER_MODEL ggml model, README, and project notices. On Windows, run Install-LocalDictate.ps1 from the extracted package to install or update the app in a stable per-user location with a Start Menu shortcut, app icon, and shortcut description. Other packages can be extracted and run directly; no separate whisper.cpp or model setup is required for the default configuration.
+          These packages include the Local Dictate UI and CLI binaries, a bundled whisper.cpp $WHISPER_CPP_VERSION whisper-cli engine, the default $DEFAULT_WHISPER_MODEL ggml model, README, and project notices. On Windows, run Install-LocalDictate.ps1 from the extracted package to install or update the app in a stable per-user location with a Start Menu shortcut, app icon, and shortcut description. On Linux, use the AppImage for the most self-contained desktop package; the tarball is still available for manual extraction and debugging. Other packages can be extracted and run directly; no separate whisper.cpp or model setup is required for the default configuration.
           EOF
 
           create_args=()
