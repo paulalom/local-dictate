@@ -25,6 +25,8 @@ pub struct AppConfig {
     pub cleanup_revisions: bool,
     #[serde(default = "default_true")]
     pub append_trailing_space: bool,
+    #[serde(default = "default_hide_to_tray")]
+    pub hide_to_tray: bool,
     pub keyword_swaps: Vec<KeywordSwapConfig>,
 }
 
@@ -69,6 +71,7 @@ impl Default for AppConfig {
             cleanup_disfluencies: false,
             cleanup_revisions: true,
             append_trailing_space: true,
+            hide_to_tray: default_hide_to_tray(),
             keyword_swaps: Vec::new(),
         }
     }
@@ -76,6 +79,10 @@ impl Default for AppConfig {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_hide_to_tray() -> bool {
+    !cfg!(target_os = "linux")
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -219,6 +226,7 @@ mod tests {
             cleanup_disfluencies: true,
             cleanup_revisions: true,
             append_trailing_space: true,
+            hide_to_tray: true,
             keyword_swaps: vec![KeywordSwapConfig {
                 from: "peers".to_string(),
                 to: "PRs".to_string(),
@@ -251,6 +259,7 @@ mod tests {
             cleanup_disfluencies: false,
             cleanup_revisions: false,
             append_trailing_space: true,
+            hide_to_tray: true,
             keyword_swaps: vec![KeywordSwapConfig {
                 from: " ".to_string(),
                 to: "PRs".to_string(),
@@ -276,6 +285,7 @@ mod tests {
             cleanup_disfluencies: false,
             cleanup_revisions: false,
             append_trailing_space: true,
+            hide_to_tray: true,
             keyword_swaps: Vec::new(),
         };
 
@@ -298,6 +308,7 @@ mod tests {
         assert!(!config.cleanup_disfluencies);
         assert!(config.cleanup_revisions);
         assert!(config.append_trailing_space);
+        assert_eq!(config.hide_to_tray, !cfg!(target_os = "linux"));
     }
 
     #[test]
@@ -317,6 +328,7 @@ keyword_swaps = []
         assert_eq!(config.engine, "bundled-whisper-cpp");
         assert_eq!(config.model, "base.en");
         assert!(config.append_trailing_space);
+        assert_eq!(config.hide_to_tray, !cfg!(target_os = "linux"));
         assert!(!config.cleanup_disfluencies);
         assert!(config.cleanup_revisions);
         assert_eq!(config.engine_path, "engines/whisper-cli.exe");

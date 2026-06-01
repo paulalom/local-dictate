@@ -145,7 +145,7 @@ mod platform {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
 mod platform {
     use super::FocusTarget;
 
@@ -154,4 +154,96 @@ mod platform {
     }
 
     pub fn restore_focus(_target: FocusTarget) {}
+}
+
+#[cfg(target_os = "linux")]
+mod platform {
+    use super::{FocusTarget, settle_after_restore};
+    use libxdo_sys::{
+        xdo_activate_window, xdo_focus_window, xdo_free, xdo_get_active_window,
+        xdo_get_focused_window_sane, xdo_new,
+    };
+    use std::ptr;
+    use x11::xlib::Window;
+
+    pub fn current_focus_target() -> Option<FocusTarget> {
+        let xdo = XdoHandle::new()?;
+        let foreground_window = active_window(&xdo)?;
+        let focused_control = focused_window(&xdo);
+
+        Some(FocusTarget {
+            foreground_window: foreground_window as isize,
+            focused_control: focused_control.map(|window| window as isize),
+        })
+    }
+
+    pub fn restore_focus(target: FocusTarget) {
+        let Some(xdo) = XdoHandle::new() else {
+            return;
+        };
+
+        let foreground_window = target.foreground_window as Window;
+        if foreground_window == 0 {
+            return;
+        }
+
+        unsafe {
+            xdo_activate_window(xdo.as_ptr(), foreground_window);
+            xdo_focus_window(xdo.as_ptr(), foreground_window);
+        }
+        settle_after_restore();
+
+        if let Some(focused_control) = target.focused_control {
+            let focused_control = focused_control as Window;
+
+            if focused_control != 0 && focused_control != foreground_window {
+                unsafe {
+                    xdo_focus_window(xdo.as_ptr(), focused_control);
+                }
+                settle_after_restore();
+            }
+        }
+    }
+
+    struct XdoHandle {
+        handle: *mut libxdo_sys::xdo_t,
+    }
+
+    impl XdoHandle {
+        fn new() -> Option<Self> {
+            let handle = unsafe { xdo_new(ptr::null()) };
+
+            if handle.is_null() {
+                None
+            } else {
+                Some(Self { handle })
+            }
+        }
+
+        fn as_ptr(&self) -> *mut libxdo_sys::xdo_t {
+            self.handle
+        }
+    }
+
+    impl Drop for XdoHandle {
+        fn drop(&mut self) {
+            unsafe {
+                xdo_free(self.handle);
+            }
+        }
+    }
+
+    fn active_window(xdo: &XdoHandle) -> Option<Window> {
+        let mut window = 0;
+        let result = unsafe { xdo_get_active_window(xdo.as_ptr(), &mut window) };
+
+        (result == 0 && window != 0).then_some(window)
+    }
+
+    fn focused_window(xdo: &XdoHandle) -> Option<Window> {
+        let mut window = 0;
+        let result = unsafe { xdo_get_focused_window_sane(xdo.as_ptr(), &mut window) };
+
+        (result == 0 && window != 0).then_some(window)
+    }
 }

@@ -1,8 +1,13 @@
 [Desktop Entry]
+Version=1.0
 Type=Application
 Name=Local Dictate
-Comment=Local-first push-to-talk dictation
+GenericName=Dictation
+Comment=Local-first push-to-talk dictation settings
+Keywords=dictation;speech;voice;transcription;whisper;
 Exec=local-dictate-ui
 Icon=local-dictate
 Terminal=false
 Categories=Utility;Accessibility;
+StartupNotify=true
+StartupWMClass=local-dictate-ui

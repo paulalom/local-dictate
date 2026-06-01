@@ -70,6 +70,7 @@ struct SettingsApp {
     cleanup_disfluencies: bool,
     cleanup_revisions: bool,
     append_trailing_space: bool,
+    hide_to_tray: bool,
     swaps: Vec<SwapRow>,
     new_from: String,
     new_to: String,
@@ -138,8 +139,7 @@ impl SettingsApp {
         let hotkey_monitor =
             HotkeyMonitor::start(&config.capture_hotkey, hotkey_sender.clone()).ok();
 
-        let tray = AppTray::new();
-        let tray_status = tray.as_ref().err().cloned();
+        let (tray, tray_status) = initialize_app_tray();
 
         let mut app = Self {
             config_path,
@@ -153,6 +153,7 @@ impl SettingsApp {
             cleanup_disfluencies: config.cleanup_disfluencies,
             cleanup_revisions: config.cleanup_revisions,
             append_trailing_space: config.append_trailing_space,
+            hide_to_tray: config.hide_to_tray,
             swaps: config
                 .keyword_swaps
                 .into_iter()
@@ -171,7 +172,7 @@ impl SettingsApp {
             recorder: None,
             capture_context: None,
             runtime_state: RuntimeState::Idle,
-            tray: tray.ok(),
+            tray,
             single_instance,
             window_hidden: false,
             exit_requested: false,
@@ -268,6 +269,7 @@ impl SettingsApp {
         self.cleanup_disfluencies = config.cleanup_disfluencies;
         self.cleanup_revisions = config.cleanup_revisions;
         self.append_trailing_space = config.append_trailing_space;
+        self.hide_to_tray = config.hide_to_tray;
         self.swaps = config
             .keyword_swaps
             .into_iter()
@@ -331,6 +333,7 @@ impl SettingsApp {
             cleanup_disfluencies: self.cleanup_disfluencies,
             cleanup_revisions: self.cleanup_revisions,
             append_trailing_space: self.append_trailing_space,
+            hide_to_tray: self.hide_to_tray,
             keyword_swaps,
         };
 
@@ -423,15 +426,21 @@ impl SettingsApp {
 
         let close_requested = context.input(|input| input.viewport().close_requested());
         if close_requested {
-            context.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.hide_window(context);
+            if self.should_hide_to_tray() {
+                context.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                self.hide_window(context);
+            }
             return;
         }
 
         let minimized = context.input(|input| input.viewport().minimized == Some(true));
-        if minimized && !self.window_hidden {
+        if self.should_hide_to_tray() && minimized && !self.window_hidden {
             self.hide_window(context);
         }
+    }
+
+    fn should_hide_to_tray(&self) -> bool {
+        self.hide_to_tray && self.tray.is_some()
     }
 
     fn hide_window(&mut self, context: &egui::Context) {
@@ -767,6 +776,20 @@ impl SettingsApp {
                     self.save_settings();
                 }
                 ui.end_row();
+
+                ui.label("Window");
+                let tray_available = self.tray.is_some();
+                let response = ui.add_enabled(
+                    tray_available,
+                    egui::Checkbox::new(&mut self.hide_to_tray, "Hide to tray when closed"),
+                );
+                if response.changed() {
+                    self.save_settings();
+                }
+                if !tray_available {
+                    self.hide_to_tray = false;
+                }
+                ui.end_row();
             });
     }
 
@@ -989,6 +1012,19 @@ enum RuntimeEvent {
 struct CaptureContext {
     config: AppConfig,
     focus_target: Option<focus::FocusTarget>,
+}
+
+#[cfg(target_os = "linux")]
+fn initialize_app_tray() -> (Option<AppTray>, Option<String>) {
+    (None, None)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn initialize_app_tray() -> (Option<AppTray>, Option<String>) {
+    match AppTray::new() {
+        Ok(tray) => (Some(tray), None),
+        Err(error) => (None, Some(error)),
+    }
 }
 
 fn process_capture(
