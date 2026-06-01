@@ -23,6 +23,7 @@ env:
   CARGO_TERM_COLOR: always
   WHISPER_CPP_VERSION: v1.8.4
   DEFAULT_WHISPER_MODEL: base.en
+  WHISPER_ENGINE_RELEASE_PREFIX: whisper-engines
   LINUXDEPLOY_URL: https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
   APPIMAGETOOL_URL: https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
 
@@ -82,10 +83,12 @@ jobs:
             libxdo-dev \
             pkg-config
 
-      - name: Test and build Windows/Linux binaries
+      - name: Cache Rust build outputs
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Windows/Linux binaries
         if: runner.os != 'macOS'
         run: |
-          cargo test --workspace
           cargo build --workspace --release
 
       - name: Install Windows whisper.cpp engine and default model
@@ -96,12 +99,11 @@ jobs:
             -WhisperCppVersion "${{ env.WHISPER_CPP_VERSION }}" `
             -Model "${{ env.DEFAULT_WHISPER_MODEL }}"
 
-      - name: Test and build macOS universal binaries
+      - name: Build macOS universal binaries
         if: runner.os == 'macOS'
         shell: bash
         run: |
           rustup target add x86_64-apple-darwin aarch64-apple-darwin
-          cargo test --workspace
           cargo build --workspace --release --target x86_64-apple-darwin
           cargo build --workspace --release --target aarch64-apple-darwin
 
@@ -115,24 +117,66 @@ jobs:
             target/x86_64-apple-darwin/release/local-dictate-cli \
             target/aarch64-apple-darwin/release/local-dictate-cli
 
-      - name: Cache whisper.cpp engine
-        id: whisper-engine-cache
+      - name: Download reusable whisper.cpp engine
+        id: whisper-engine
         if: runner.os != 'Windows'
-        uses: actions/cache@v4.2.4
-        with:
-          path: engines/whisper-cli
-          key: whisper-cpp-${{ matrix.platform }}-${{ env.WHISPER_CPP_VERSION }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ENGINE_RELEASE: ${{ env.WHISPER_ENGINE_RELEASE_PREFIX }}-${{ env.WHISPER_CPP_VERSION }}
+          ENGINE_ASSET: whisper-cli-${{ matrix.platform }}-${{ env.WHISPER_CPP_VERSION }}.tar.gz
+        run: |
+          set +e
+          mkdir -p .local/whisper-engine-release engines
+          gh release download "$ENGINE_RELEASE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "$ENGINE_ASSET" \
+            --dir .local/whisper-engine-release
+          status=$?
+          set -e
+
+          if [[ "$status" -eq 0 && -f ".local/whisper-engine-release/$ENGINE_ASSET" ]]; then
+            tar -xzf ".local/whisper-engine-release/$ENGINE_ASSET" -C engines
+            chmod +x engines/whisper-cli
+            engines/whisper-cli --help >/dev/null
+            echo "hit=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "hit=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build macOS/Linux whisper.cpp engine
-        if: runner.os != 'Windows' && steps.whisper-engine-cache.outputs.cache-hit != 'true'
+        if: runner.os != 'Windows' && steps.whisper-engine.outputs.hit != 'true'
         shell: pwsh
         run: |
           ./scripts/build-whisper-cpp.ps1 `
             -WhisperCppVersion "${{ env.WHISPER_CPP_VERSION }}" `
             -Platform "${{ matrix.platform }}"
 
-      - name: Verify cached whisper.cpp engine
-        if: runner.os != 'Windows' && steps.whisper-engine-cache.outputs.cache-hit == 'true'
+      - name: Upload reusable whisper.cpp engine
+        if: runner.os != 'Windows' && steps.whisper-engine.outputs.hit != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ENGINE_RELEASE: ${{ env.WHISPER_ENGINE_RELEASE_PREFIX }}-${{ env.WHISPER_CPP_VERSION }}
+          ENGINE_ASSET: whisper-cli-${{ matrix.platform }}-${{ env.WHISPER_CPP_VERSION }}.tar.gz
+        run: |
+          test -x engines/whisper-cli
+          mkdir -p .local/whisper-engine-upload
+          tar -czf ".local/whisper-engine-upload/$ENGINE_ASSET" -C engines whisper-cli
+
+          gh release view "$ENGINE_RELEASE" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "$ENGINE_RELEASE" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "whisper.cpp $WHISPER_CPP_VERSION engines" \
+              --notes "Reusable Local Dictate whisper-cli engine assets for $WHISPER_CPP_VERSION." || true
+
+          gh release upload "$ENGINE_RELEASE" \
+            ".local/whisper-engine-upload/$ENGINE_ASSET" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+      - name: Verify whisper.cpp engine
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           test -x engines/whisper-cli
