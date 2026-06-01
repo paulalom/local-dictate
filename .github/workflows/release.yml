@@ -115,13 +115,28 @@ jobs:
             target/x86_64-apple-darwin/release/local-dictate-cli \
             target/aarch64-apple-darwin/release/local-dictate-cli
 
-      - name: Build macOS/Linux whisper.cpp engine
+      - name: Cache whisper.cpp engine
+        id: whisper-engine-cache
         if: runner.os != 'Windows'
+        uses: actions/cache@v4.2.4
+        with:
+          path: engines/whisper-cli
+          key: whisper-cpp-${{ matrix.platform }}-${{ env.WHISPER_CPP_VERSION }}
+
+      - name: Build macOS/Linux whisper.cpp engine
+        if: runner.os != 'Windows' && steps.whisper-engine-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           ./scripts/build-whisper-cpp.ps1 `
             -WhisperCppVersion "${{ env.WHISPER_CPP_VERSION }}" `
             -Platform "${{ matrix.platform }}"
+
+      - name: Verify cached whisper.cpp engine
+        if: runner.os != 'Windows' && steps.whisper-engine-cache.outputs.cache-hit == 'true'
+        shell: bash
+        run: |
+          test -x engines/whisper-cli
+          engines/whisper-cli --help >/dev/null
 
       - name: Install default Whisper model
         if: runner.os != 'Windows'
