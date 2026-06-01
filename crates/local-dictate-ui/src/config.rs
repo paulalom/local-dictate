@@ -68,7 +68,7 @@ impl Default for AppConfig {
             model_path: String::new(),
             language: "en".to_string(),
             auto_insert: true,
-            cleanup_disfluencies: false,
+            cleanup_disfluencies: true,
             cleanup_revisions: true,
             append_trailing_space: true,
             hide_to_tray: default_hide_to_tray(),
@@ -305,7 +305,7 @@ mod tests {
         assert_eq!(config.model, "base.en");
         assert!(config.engine_path.is_empty());
         assert!(config.model_path.is_empty());
-        assert!(!config.cleanup_disfluencies);
+        assert!(config.cleanup_disfluencies);
         assert!(config.cleanup_revisions);
         assert!(config.append_trailing_space);
         assert_eq!(config.hide_to_tray, !cfg!(target_os = "linux"));
@@ -329,7 +329,7 @@ keyword_swaps = []
         assert_eq!(config.model, "base.en");
         assert!(config.append_trailing_space);
         assert_eq!(config.hide_to_tray, !cfg!(target_os = "linux"));
-        assert!(!config.cleanup_disfluencies);
+        assert!(config.cleanup_disfluencies);
         assert!(config.cleanup_revisions);
         assert_eq!(config.engine_path, "engines/whisper-cli.exe");
         assert_eq!(config.model_path, "models/ggml-base.en.bin");

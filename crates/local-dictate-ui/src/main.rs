@@ -777,19 +777,16 @@ impl SettingsApp {
                 }
                 ui.end_row();
 
-                ui.label("Window");
-                let tray_available = self.tray.is_some();
-                let response = ui.add_enabled(
-                    tray_available,
-                    egui::Checkbox::new(&mut self.hide_to_tray, "Hide to tray when closed"),
-                );
-                if response.changed() {
-                    self.save_settings();
+                if self.tray.is_some() {
+                    ui.label("Window");
+                    if ui
+                        .checkbox(&mut self.hide_to_tray, "Hide to tray when closed")
+                        .changed()
+                    {
+                        self.save_settings();
+                    }
+                    ui.end_row();
                 }
-                if !tray_available {
-                    self.hide_to_tray = false;
-                }
-                ui.end_row();
             });
     }
 
