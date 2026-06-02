@@ -27,8 +27,8 @@ use local_dictate_core::{
 };
 use single_instance::{InstanceCommand, SingleInstance, StartupAction};
 use transcription_assets::{
-    CUSTOM_ENGINE_ID, CUSTOM_MODEL_ID, ENGINE_OPTIONS, MODEL_OPTIONS, engine_label, model_label,
-    resolve_transcription_assets,
+    CUSTOM_ENGINE_ID, CUSTOM_MODEL_ID, ENGINE_OPTIONS, MODEL_OPTIONS, default_engine_path_hint,
+    engine_label, model_label, resolve_transcription_assets,
 };
 
 fn main() -> eframe::Result {
@@ -701,7 +701,7 @@ impl SettingsApp {
                         .add_sized(
                             [ui.available_width(), 24.0],
                             egui::TextEdit::singleline(&mut self.engine_path)
-                                .hint_text("engines/whisper-cli.exe"),
+                                .hint_text(default_engine_path_hint()),
                         )
                         .changed()
                     {

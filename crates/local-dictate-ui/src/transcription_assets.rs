@@ -90,6 +90,18 @@ pub fn model_label(id: &str) -> &'static str {
     option_label(MODEL_OPTIONS, id).unwrap_or("Unknown model")
 }
 
+pub fn default_engine_path_hint() -> &'static str {
+    #[cfg(target_os = "windows")]
+    {
+        "engines/whisper-cli.exe"
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        "engines/whisper-cli"
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AssetResolutionError {
     UnknownEngine(String),
@@ -246,6 +258,10 @@ fn asset_roots() -> Vec<PathBuf> {
     if let Ok(exe_path) = env::current_exe()
         && let Some(exe_dir) = exe_path.parent()
     {
+        if let Some(resources_dir) = macos_bundle_resource_root(exe_dir) {
+            push_root_with_ancestors(&mut roots, resources_dir);
+        }
+
         push_root_with_ancestors(&mut roots, exe_dir.to_path_buf());
     }
 
@@ -254,6 +270,25 @@ fn asset_roots() -> Vec<PathBuf> {
     }
 
     roots
+}
+
+fn macos_bundle_resource_root(exe_dir: &Path) -> Option<PathBuf> {
+    if !path_file_name_eq(exe_dir, "MacOS") {
+        return None;
+    }
+
+    let contents_dir = exe_dir.parent()?;
+    if !path_file_name_eq(contents_dir, "Contents") {
+        return None;
+    }
+
+    Some(contents_dir.join("Resources"))
+}
+
+fn path_file_name_eq(path: &Path, expected: &str) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name == expected)
 }
 
 fn push_root_with_ancestors(roots: &mut Vec<PathBuf>, root: PathBuf) {
@@ -334,13 +369,24 @@ fn format_paths(paths: &[PathBuf]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        CUSTOM_MODEL_ID, DEFAULT_ENGINE_ID, DEFAULT_MODEL_ID, engine_label, model_file_name,
+        CUSTOM_MODEL_ID, DEFAULT_ENGINE_ID, DEFAULT_MODEL_ID, default_engine_path_hint,
+        engine_label, macos_bundle_resource_root, model_file_name,
     };
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn labels_known_defaults() {
         assert_eq!(engine_label(DEFAULT_ENGINE_ID), "Bundled whisper.cpp");
         assert_eq!(model_file_name(DEFAULT_MODEL_ID), "ggml-base.en.bin");
+    }
+
+    #[test]
+    fn default_engine_hint_uses_current_platform_binary_name() {
+        #[cfg(target_os = "windows")]
+        assert_eq!(default_engine_path_hint(), "engines/whisper-cli.exe");
+
+        #[cfg(not(target_os = "windows"))]
+        assert_eq!(default_engine_path_hint(), "engines/whisper-cli");
     }
 
     #[test]
@@ -350,5 +396,24 @@ mod tests {
             model_file_name(CUSTOM_MODEL_ID),
             "ggml-custom-ggml-model.bin"
         );
+    }
+
+    #[test]
+    fn finds_macos_bundle_resources_from_executable_directory() {
+        let exe_dir = Path::new("/Applications/Local Dictate.app/Contents/MacOS");
+
+        assert_eq!(
+            macos_bundle_resource_root(exe_dir),
+            Some(PathBuf::from(
+                "/Applications/Local Dictate.app/Contents/Resources"
+            ))
+        );
+    }
+
+    #[test]
+    fn ignores_non_macos_bundle_executable_directories() {
+        let exe_dir = Path::new("/usr/local/bin");
+
+        assert_eq!(macos_bundle_resource_root(exe_dir), None);
     }
 }

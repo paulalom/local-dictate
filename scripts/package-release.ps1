@@ -72,8 +72,10 @@ function Copy-Executable {
 }
 
 function Copy-EngineAssets {
+    param([string]$DestinationBase = $packageDir)
+
     $engineRoot = Join-Path $repoRoot "engines"
-    $destinationRoot = Join-Path $packageDir "engines"
+    $destinationRoot = Join-Path $DestinationBase "engines"
     $engineFileName = if ($Platform -eq "windows-x64") {
         "whisper-cli.exe"
     } else {
@@ -96,14 +98,16 @@ function Copy-EngineAssets {
     if ($Platform -eq "windows-x64") {
         Get-ChildItem -LiteralPath $engineRoot -Filter "*.dll" -File |
             Copy-Item -Destination $destinationRoot -Force
-    } else {
+    } elseif (-not $isWindowsHost) {
         & chmod +x (Join-Path $destinationRoot $engineFileName)
     }
 }
 
 function Copy-ModelAssets {
+    param([string]$DestinationBase = $packageDir)
+
     $modelRoot = Join-Path $repoRoot "models"
-    $destinationRoot = Join-Path $packageDir "models"
+    $destinationRoot = Join-Path $DestinationBase "models"
     $modelFileName = "ggml-$DefaultModel.bin"
     $modelPath = Join-Path $modelRoot $modelFileName
 
@@ -118,6 +122,47 @@ function Copy-ModelAssets {
 
     New-Item -ItemType Directory -Force -Path $destinationRoot | Out-Null
     Copy-Item -LiteralPath $modelPath -Destination (Join-Path $destinationRoot $modelFileName) -Force
+}
+
+function Set-MacOSInfoPlistVersion {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Version
+    )
+
+    $document = [System.Xml.XmlDocument]::new()
+    $document.PreserveWhitespace = $true
+    $document.XmlResolver = $null
+    $document.Load($Path)
+
+    $requiredKeys = @("CFBundleShortVersionString", "CFBundleVersion")
+    $updatedKeys = @{}
+
+    foreach ($keyNode in $document.SelectNodes("/plist/dict/key")) {
+        if (-not $requiredKeys.Contains($keyNode.InnerText)) {
+            continue
+        }
+
+        $valueNode = $keyNode.NextSibling
+        while ($null -ne $valueNode -and $valueNode.NodeType -ne [System.Xml.XmlNodeType]::Element) {
+            $valueNode = $valueNode.NextSibling
+        }
+
+        if ($null -eq $valueNode -or $valueNode.Name -ne "string") {
+            throw "Could not update $($keyNode.InnerText) in $Path"
+        }
+
+        $valueNode.InnerText = $Version
+        $updatedKeys[$keyNode.InnerText] = $true
+    }
+
+    foreach ($requiredKey in $requiredKeys) {
+        if (-not $updatedKeys.ContainsKey($requiredKey)) {
+            throw "Missing $requiredKey in $Path"
+        }
+    }
+
+    $document.Save($Path)
 }
 
 function Copy-SetupScripts {
@@ -167,12 +212,13 @@ New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
 
 Copy-Item -LiteralPath (Join-Path $repoRoot "README.md") -Destination $packageDir
 Copy-Item -LiteralPath (Join-Path $repoRoot "THIRD_PARTY_NOTICES.md") -Destination $packageDir
-Copy-EngineAssets
-Copy-ModelAssets
 Copy-SetupScripts
 
 switch ($Platform) {
     "windows-x64" {
+        Copy-EngineAssets
+        Copy-ModelAssets
+
         Copy-Executable `
             -Source (Join-Path $binaryRoot "local-dictate-ui.exe") `
             -Destination (Join-Path $packageDir "local-dictate-ui.exe")
@@ -200,12 +246,17 @@ switch ($Platform) {
         Copy-Item `
             -LiteralPath (Join-Path (Join-Path (Join-Path $repoRoot "packaging") "macos") "Info.plist") `
             -Destination (Join-Path $contentsDir "Info.plist")
+        Set-MacOSInfoPlistVersion `
+            -Path (Join-Path $contentsDir "Info.plist") `
+            -Version $Version
         Copy-Executable `
             -Source (Join-Path $binaryRoot "local-dictate-ui") `
             -Destination (Join-Path $macosDir "local-dictate-ui")
         Copy-Executable `
             -Source (Join-Path $binaryRoot "local-dictate-cli") `
             -Destination (Join-Path $binDir "local-dictate-cli")
+        Copy-EngineAssets -DestinationBase $resourcesDir
+        Copy-ModelAssets -DestinationBase $resourcesDir
 
         $archivePath = Join-Path $outputRoot "$packageName.zip"
         if (Test-Path -LiteralPath $archivePath) {
@@ -221,6 +272,9 @@ switch ($Platform) {
     }
 
     "linux-x64" {
+        Copy-EngineAssets
+        Copy-ModelAssets
+
         $binDir = Join-Path $packageDir "bin"
         $shareDir = Join-Path (Join-Path $packageDir "share") "applications"
 
