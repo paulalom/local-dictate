@@ -365,6 +365,23 @@ jobs:
               --jq .body || true
           )"
 
+          if [[ -n "$generated_body" ]]; then
+            inline_generated_changes="$(
+              printf '%s\n' "$generated_body" |
+                sed -E \
+                  -e '/^[[:space:]]*$/d' \
+                  -e '/^\*\*Full Changelog\*\*: /d' \
+                  -e '/^#{1,6}[[:space:]]+/d'
+            )"
+
+            if [[ -z "$inline_generated_changes" ]]; then
+              generated_body="$(
+                printf '%s\n' "$generated_body" |
+                  sed -E 's/^\*\*Full Changelog\*\*: /**Changelog**: /'
+              )"
+            fi
+          fi
+
           {
             if [[ -n "$generated_body" ]]; then
               printf '%s\n\n' "$generated_body"
