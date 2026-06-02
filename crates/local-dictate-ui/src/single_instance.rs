@@ -15,25 +15,17 @@ pub enum StartupAction {
 #[cfg(target_os = "windows")]
 pub use windows::SingleInstance;
 
+#[cfg(unix)]
+pub use unix::SingleInstance;
+
 #[cfg(target_os = "windows")]
 pub fn prepare_startup() -> StartupAction {
     windows::prepare_startup()
 }
 
-#[cfg(not(target_os = "windows"))]
-#[derive(Debug)]
-pub struct SingleInstance;
-
-#[cfg(not(target_os = "windows"))]
+#[cfg(unix)]
 pub fn prepare_startup() -> StartupAction {
-    StartupAction::Run(None)
-}
-
-#[cfg(not(target_os = "windows"))]
-impl SingleInstance {
-    pub fn poll_command(&mut self) -> Option<InstanceCommand> {
-        None
-    }
+    unix::prepare_startup()
 }
 
 fn compare_versions(left: &str, right: &str) -> Ordering {
@@ -60,6 +52,244 @@ fn version_parts(version: &str) -> Vec<u64> {
         .filter(|part| !part.is_empty())
         .map(|part| part.parse::<u64>().unwrap_or_default())
         .collect()
+}
+
+#[cfg(unix)]
+mod unix {
+    use super::{InstanceCommand, StartupAction, compare_versions};
+    use directories::ProjectDirs;
+    use std::cmp::Ordering;
+    use std::fs::{self, File, OpenOptions};
+    use std::io::ErrorKind;
+    use std::path::{Path, PathBuf};
+    use std::thread;
+    use std::time::{Duration, SystemTime};
+
+    const COMMAND_FILE_NAME: &str = "instance-command.txt";
+    const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+    const LOCK_FILE_NAME: &str = "instance.lock";
+    const STATE_FILE_NAME: &str = "instance-state.txt";
+
+    #[derive(Debug)]
+    pub struct SingleInstance {
+        _lock_file: File,
+        lock_path: PathBuf,
+        state_path: PathBuf,
+        command_path: PathBuf,
+        last_command_modified: Option<SystemTime>,
+    }
+
+    impl SingleInstance {
+        pub fn poll_command(&mut self) -> Option<InstanceCommand> {
+            let metadata = fs::metadata(&self.command_path).ok()?;
+            let modified = metadata.modified().ok();
+
+            if modified.is_some() && modified == self.last_command_modified {
+                return None;
+            }
+
+            self.last_command_modified = modified;
+            let text = fs::read_to_string(&self.command_path).ok()?;
+            let _ = fs::remove_file(&self.command_path);
+            parse_command(&text)
+        }
+    }
+
+    impl Drop for SingleInstance {
+        fn drop(&mut self) {
+            let _ = fs::remove_file(&self.state_path);
+            let _ = fs::remove_file(&self.lock_path);
+        }
+    }
+
+    pub fn prepare_startup() -> StartupAction {
+        let Ok(paths) = InstancePaths::new() else {
+            return StartupAction::Run(None);
+        };
+
+        match try_acquire_lock(&paths.lock_path) {
+            LockAttempt::Acquired(lock_file) => run_as_primary(lock_file, paths),
+            LockAttempt::AlreadyExists => handle_existing_instance(paths),
+            LockAttempt::Failed => StartupAction::Run(None),
+        }
+    }
+
+    fn run_as_primary(lock_file: File, paths: InstancePaths) -> StartupAction {
+        let _ = fs::remove_file(&paths.command_path);
+        let _ = write_state(&paths.state_path);
+
+        StartupAction::Run(Some(SingleInstance {
+            _lock_file: lock_file,
+            lock_path: paths.lock_path,
+            state_path: paths.state_path,
+            command_path: paths.command_path,
+            last_command_modified: None,
+        }))
+    }
+
+    fn handle_existing_instance(paths: InstancePaths) -> StartupAction {
+        let state = read_state(&paths.state_path);
+
+        let stale_lock = match state.as_ref().and_then(|state| state.pid) {
+            Some(pid) => !process_is_running(pid),
+            None => true,
+        };
+
+        if stale_lock {
+            let _ = fs::remove_file(&paths.lock_path);
+            if let LockAttempt::Acquired(lock_file) = try_acquire_lock(&paths.lock_path) {
+                return run_as_primary(lock_file, paths);
+            }
+        }
+
+        let running_version = state
+            .as_ref()
+            .map(|state| state.version.as_str())
+            .unwrap_or_default();
+
+        if !running_version.is_empty()
+            && compare_versions(CURRENT_VERSION, running_version) == Ordering::Greater
+        {
+            let _ = write_command(&paths.command_path, InstanceCommand::Exit);
+
+            if let Some(lock_file) =
+                wait_for_primary_to_exit(&paths.lock_path, Duration::from_secs(6))
+            {
+                return run_as_primary(lock_file, paths);
+            }
+
+            if let Some(pid) = state.and_then(|state| state.pid)
+                && terminate_existing_process(pid)
+                && let Some(lock_file) =
+                    wait_for_primary_to_exit(&paths.lock_path, Duration::from_secs(3))
+            {
+                return run_as_primary(lock_file, paths);
+            }
+        }
+
+        let _ = write_command(&paths.command_path, InstanceCommand::Show);
+        StartupAction::Exit
+    }
+
+    fn wait_for_primary_to_exit(lock_path: &Path, timeout: Duration) -> Option<File> {
+        let started = std::time::Instant::now();
+
+        while started.elapsed() < timeout {
+            match try_acquire_lock(lock_path) {
+                LockAttempt::Acquired(lock_file) => return Some(lock_file),
+                LockAttempt::AlreadyExists => thread::sleep(Duration::from_millis(100)),
+                LockAttempt::Failed => return None,
+            }
+        }
+
+        None
+    }
+
+    enum LockAttempt {
+        Acquired(File),
+        AlreadyExists,
+        Failed,
+    }
+
+    fn try_acquire_lock(path: &Path) -> LockAttempt {
+        match OpenOptions::new().write(true).create_new(true).open(path) {
+            Ok(file) => LockAttempt::Acquired(file),
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => LockAttempt::AlreadyExists,
+            Err(_) => LockAttempt::Failed,
+        }
+    }
+
+    fn process_is_running(pid: u32) -> bool {
+        let pid = pid as libc::pid_t;
+        if pid == std::process::id() as libc::pid_t {
+            return true;
+        }
+
+        unsafe { libc::kill(pid, 0) == 0 }
+    }
+
+    fn terminate_existing_process(pid: u32) -> bool {
+        let pid = pid as libc::pid_t;
+        if pid == std::process::id() as libc::pid_t {
+            return false;
+        }
+
+        unsafe { libc::kill(pid, libc::SIGTERM) == 0 }
+    }
+
+    #[derive(Debug)]
+    struct InstancePaths {
+        lock_path: PathBuf,
+        state_path: PathBuf,
+        command_path: PathBuf,
+    }
+
+    impl InstancePaths {
+        fn new() -> Result<Self, ()> {
+            let project_dirs =
+                ProjectDirs::from("dev", "Local Dictate", "Local Dictate").ok_or(())?;
+            let directory = project_dirs.data_local_dir().join("instance");
+            fs::create_dir_all(&directory).map_err(|_| ())?;
+
+            Ok(Self {
+                lock_path: directory.join(LOCK_FILE_NAME),
+                state_path: directory.join(STATE_FILE_NAME),
+                command_path: directory.join(COMMAND_FILE_NAME),
+            })
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct InstanceState {
+        version: String,
+        pid: Option<u32>,
+    }
+
+    fn write_state(path: &Path) -> Result<(), std::io::Error> {
+        let exe = std::env::current_exe()
+            .ok()
+            .map(|path| path.display().to_string())
+            .unwrap_or_default();
+        let text = format!(
+            "version={CURRENT_VERSION}\npid={}\nexe={exe}\n",
+            std::process::id()
+        );
+
+        fs::write(path, text)
+    }
+
+    fn read_state(path: &Path) -> Option<InstanceState> {
+        let text = fs::read_to_string(path).ok()?;
+        let version = read_key(&text, "version")?.to_string();
+        let pid = read_key(&text, "pid").and_then(|pid| pid.parse::<u32>().ok());
+
+        Some(InstanceState { version, pid })
+    }
+
+    fn write_command(path: &Path, command: InstanceCommand) -> Result<(), std::io::Error> {
+        let command = match command {
+            InstanceCommand::Show => "show",
+            InstanceCommand::Exit => "exit",
+        };
+        let text = format!("command={command}\nversion={CURRENT_VERSION}\n");
+
+        fs::write(path, text)
+    }
+
+    fn parse_command(text: &str) -> Option<InstanceCommand> {
+        match read_key(text, "command")? {
+            "show" => Some(InstanceCommand::Show),
+            "exit" => Some(InstanceCommand::Exit),
+            _ => None,
+        }
+    }
+
+    fn read_key<'a>(text: &'a str, key: &str) -> Option<&'a str> {
+        text.lines().find_map(|line| {
+            let (candidate_key, value) = line.split_once('=')?;
+            (candidate_key == key).then_some(value.trim())
+        })
+    }
 }
 
 #[cfg(target_os = "windows")]

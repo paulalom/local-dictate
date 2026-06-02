@@ -25,7 +25,8 @@ env:
   DEFAULT_WHISPER_MODEL: base.en
   WHISPER_ENGINE_RELEASE_PREFIX: whisper-engines
   LINUXDEPLOY_URL: https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-  APPIMAGETOOL_URL: https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+  APPIMAGETOOL_URL: https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+  APPIMAGE_RUNTIME_URL: https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64
 
 jobs:
   build:
@@ -208,6 +209,7 @@ jobs:
           mkdir -p .local/bin
           curl -L "$LINUXDEPLOY_URL" -o .local/bin/linuxdeploy-x86_64.AppImage
           curl -L "$APPIMAGETOOL_URL" -o .local/bin/appimagetool-x86_64.AppImage
+          curl -L "$APPIMAGE_RUNTIME_URL" -o .local/bin/runtime-x86_64
           chmod +x .local/bin/linuxdeploy-x86_64.AppImage .local/bin/appimagetool-x86_64.AppImage
 
       - name: Package Linux AppImage
@@ -220,6 +222,7 @@ jobs:
             --output-dir dist \
             --linuxdeploy .local/bin/linuxdeploy-x86_64.AppImage \
             --appimagetool .local/bin/appimagetool-x86_64.AppImage \
+            --runtime-file .local/bin/runtime-x86_64 \
             --default-model "${{ env.DEFAULT_WHISPER_MODEL }}"
 
       - name: Upload release asset
@@ -275,17 +278,49 @@ jobs:
           cat > release-notes.md <<EOF
           ## Windows
 
-          Download `local-dictate-$RELEASE_VERSION-windows-x64.zip`, extract it, then run `Install-LocalDictate.ps1` from the extracted folder. The installer creates a per-user install with a Start Menu shortcut, app icon, and shortcut description.
+          Download `local-dictate-$RELEASE_VERSION-windows-x64.zip`, extract the zip, then run `Install-LocalDictate.ps1` from the extracted folder. The installer creates a per-user install, Start Menu shortcut, app icon, and shortcut description.
+
+          To update an existing Windows install, download the new zip, extract it, and run `Install-LocalDictate.ps1` again. The installer replaces the installed app files and keeps user settings.
+
+          Launch Local Dictate from the Start Menu after installation.
 
           ## macOS
 
-          Download `local-dictate-$RELEASE_VERSION-macos-universal.zip`, extract it, then run `Local Dictate.app`.
+          Download `local-dictate-$RELEASE_VERSION-macos-universal.zip`, extract the zip, then move `Local Dictate.app` to Applications or another folder you control.
+
+          Launch `Local Dictate.app` from Finder. If macOS blocks the first launch, open System Settings, Privacy & Security, then allow the app and launch it again.
+
+          To update macOS, quit Local Dictate, download and extract the new zip, then replace the old `Local Dictate.app` with the new one.
 
           ## Linux
 
-          Preferred path: install FUSE support for your distro, then run `local-dictate-$RELEASE_VERSION-linux-x64.AppImage` directly. On Ubuntu 24.04, the FUSE package is `libfuse2t64`.
+          Choose one of the following Linux paths.
 
-          FUSE-free install path:
+          ### Portable AppImage
+
+          Download `local-dictate-$RELEASE_VERSION-linux-x64.AppImage`, make it executable, then run it directly. This path requires working FUSE support and does not add Local Dictate to your app launcher.
+
+          ```bash
+          chmod +x local-dictate-$RELEASE_VERSION-linux-x64.AppImage
+          ./local-dictate-$RELEASE_VERSION-linux-x64.AppImage
+          ```
+
+          ### App Launcher Install
+
+          Download both `local-dictate-$RELEASE_VERSION-linux-x64.AppImage` and `local-dictate-$RELEASE_VERSION-linux-x64.install.sh` into the same folder. Make both files executable, then run the installer.
+
+          ```bash
+          chmod +x local-dictate-$RELEASE_VERSION-linux-x64.AppImage local-dictate-$RELEASE_VERSION-linux-x64.install.sh
+          ./local-dictate-$RELEASE_VERSION-linux-x64.install.sh
+          ```
+
+          The installer creates a per-user install under `~/.local`, adds a desktop launcher, installs the app icon and metadata, and keeps using the AppImage/FUSE runtime.
+
+          To update an existing Linux install, download the new AppImage and `.install.sh` next to each other, then run the installer again. It stops the running per-user install if needed, replaces the copied AppImage, refreshes launcher metadata, and keeps user settings.
+
+          ### FUSE-Free Install
+
+          Use this path if AppImage mounting is blocked or unavailable. It extracts the AppImage once, then installs the extracted AppDir into `~/.local`.
 
           ```bash
           chmod +x local-dictate-$RELEASE_VERSION-linux-x64.AppImage
@@ -293,7 +328,7 @@ jobs:
           ./squashfs-root/install-linux.sh --appdir ./squashfs-root
           ```
 
-          The Linux tarball `local-dictate-$RELEASE_VERSION-linux-x64.tar.gz` is also available for manual extraction and debugging.
+          The Linux tarball `local-dictate-$RELEASE_VERSION-linux-x64.tar.gz` is also available for manual extraction and debugging; most users should use one of the AppImage paths above.
 
           ## Included assets
 

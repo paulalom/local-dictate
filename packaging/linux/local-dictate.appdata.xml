@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.localdictate.LocalDictate</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Local Dictate</name>
+  <summary>Local-first push-to-talk dictation</summary>
+  <description>
+    <p>Local Dictate provides push-to-talk speech transcription using bundled local whisper.cpp assets and inserts the resulting text into the active application.</p>
+  </description>
+  <launchable type="desktop-id">local-dictate.desktop</launchable>
+  <url type="homepage">https://github.com/paulalom/local-dictate</url>
+  <categories>
+    <category>Utility</category>
+    <category>Accessibility</category>
+  </categories>
+  <provides>
+    <binary>local-dictate-ui</binary>
+  </provides>
+</component>

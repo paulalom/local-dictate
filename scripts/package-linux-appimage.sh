@@ -9,6 +9,7 @@ Usage: package-linux-appimage.sh \
   --output-dir <dir> \
   --linuxdeploy <path> \
   --appimagetool <path> \
+  [--runtime-file <path>] \
   [--default-model base.en]
 EOF
 }
@@ -18,6 +19,7 @@ binary_dir=""
 output_dir="dist"
 linuxdeploy=""
 appimagetool=""
+runtime_file=""
 default_model="base.en"
 
 while [[ $# -gt 0 ]]; do
@@ -40,6 +42,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --appimagetool)
       appimagetool="${2:-}"
+      shift 2
+      ;;
+    --runtime-file)
+      runtime_file="${2:-}"
       shift 2
       ;;
     --default-model)
@@ -70,6 +76,7 @@ stage_root="$repo_root/.local/appimage"
 appdir="$stage_root/Local_Dictate.AppDir"
 model_file="ggml-$default_model.bin"
 appimage_path="$output_root/local-dictate-$version-linux-x64.AppImage"
+installer_path="$output_root/local-dictate-$version-linux-x64.install.sh"
 
 require_file() {
   local path="$1"
@@ -86,9 +93,13 @@ require_file "$repo_root/engines/whisper-cli"
 require_file "$repo_root/models/$model_file"
 require_file "$repo_root/packaging/linux/local-dictate.desktop"
 require_file "$repo_root/packaging/linux/local-dictate.svg"
+require_file "$repo_root/packaging/linux/local-dictate.appdata.xml"
 require_file "$repo_root/scripts/install-linux.sh"
 require_file "$linuxdeploy"
 require_file "$appimagetool"
+if [[ -n "$runtime_file" ]]; then
+  require_file "$runtime_file"
+fi
 
 export APPIMAGE_EXTRACT_AND_RUN=1
 
@@ -99,6 +110,7 @@ mkdir -p \
   "$appdir/usr/lib/local-dictate/models" \
   "$appdir/usr/share/applications" \
   "$appdir/usr/share/icons/hicolor/scalable/apps" \
+  "$appdir/usr/share/metainfo" \
   "$appdir/usr/share/local-dictate"
 
 install -m 0755 "$binary_root/local-dictate-ui" "$appdir/usr/bin/local-dictate-ui"
@@ -109,6 +121,7 @@ install -m 0644 "$repo_root/packaging/linux/local-dictate.svg" "$appdir/usr/shar
 install -m 0644 "$repo_root/packaging/linux/local-dictate.svg" "$appdir/local-dictate.svg"
 install -m 0644 "$repo_root/packaging/linux/local-dictate.desktop" "$appdir/local-dictate.desktop"
 install -m 0644 "$repo_root/packaging/linux/local-dictate.desktop" "$appdir/usr/share/applications/local-dictate.desktop"
+install -m 0644 "$repo_root/packaging/linux/local-dictate.appdata.xml" "$appdir/usr/share/metainfo/local-dictate.appdata.xml"
 install -m 0755 "$repo_root/scripts/install-linux.sh" "$appdir/install-linux.sh"
 install -m 0755 "$repo_root/scripts/install-linux.sh" "$appdir/usr/share/local-dictate/install-linux.sh"
 
@@ -161,7 +174,15 @@ EOF
 chmod +x "$appdir/AppRun"
 
 rm -f "$appimage_path"
-ARCH=x86_64 "$appimagetool" "$appdir" "$appimage_path"
+appimagetool_args=()
+appimagetool_args+=(--no-appstream)
+if [[ -n "$runtime_file" ]]; then
+  appimagetool_args+=(--runtime-file "$runtime_file")
+fi
+
+ARCH=x86_64 "$appimagetool" "${appimagetool_args[@]}" "$appdir" "$appimage_path"
 chmod +x "$appimage_path"
+install -m 0755 "$repo_root/scripts/install-linux.sh" "$installer_path"
 
 echo "Packaged $appimage_path"
+echo "Packaged $installer_path"
