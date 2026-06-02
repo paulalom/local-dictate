@@ -384,7 +384,7 @@ jobs:
 
           {
             if [[ -n "$generated_body" ]]; then
-              printf '%s\n\n' "$generated_body"
+              printf '%s\n\n---\n\n' "$generated_body"
             fi
 
             cat <<'EOF' | sed \
