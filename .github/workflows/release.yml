@@ -24,14 +24,75 @@ env:
   WHISPER_CPP_VERSION: v1.8.4
   DEFAULT_WHISPER_MODEL: base.en
   WHISPER_ENGINE_RELEASE_PREFIX: whisper-engines
+  WHISPER_MODEL_RELEASE: whisper-models
   LINUXDEPLOY_URL: https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
   APPIMAGETOOL_URL: https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
   APPIMAGE_RUNTIME_URL: https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64
 
 jobs:
+  prepare-model:
+    name: Prepare Whisper model
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6.0.2
+
+      - name: Download reusable Whisper model
+        id: whisper-model
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODEL_RELEASE: ${{ env.WHISPER_MODEL_RELEASE }}
+          MODEL_ASSET: ggml-${{ env.DEFAULT_WHISPER_MODEL }}.bin
+        run: |
+          set +e
+          mkdir -p .local/whisper-model-release models
+          gh release download "$MODEL_RELEASE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "$MODEL_ASSET" \
+            --dir .local/whisper-model-release
+          status=$?
+          set -e
+
+          if [[ "$status" -eq 0 && -f ".local/whisper-model-release/$MODEL_ASSET" ]]; then
+            cp ".local/whisper-model-release/$MODEL_ASSET" "models/$MODEL_ASSET"
+            echo "hit=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "hit=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install and verify default Whisper model
+        shell: pwsh
+        run: |
+          ./scripts/install-whisper-model.ps1 `
+            -Model "${{ env.DEFAULT_WHISPER_MODEL }}"
+
+      - name: Upload reusable Whisper model
+        if: steps.whisper-model.outputs.hit != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODEL_RELEASE: ${{ env.WHISPER_MODEL_RELEASE }}
+          MODEL_ASSET: ggml-${{ env.DEFAULT_WHISPER_MODEL }}.bin
+        run: |
+          test -f "models/$MODEL_ASSET"
+
+          gh release view "$MODEL_RELEASE" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "$MODEL_RELEASE" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Whisper ggml model assets" \
+              --notes "Reusable Local Dictate ggml model assets."
+
+          gh release upload "$MODEL_RELEASE" \
+            "models/$MODEL_ASSET" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
   build:
     name: Build ${{ matrix.platform }}
     runs-on: ${{ matrix.runner }}
+    needs: prepare-model
     strategy:
       fail-fast: false
       matrix:
@@ -92,13 +153,14 @@ jobs:
         run: |
           cargo build --workspace --release
 
-      - name: Install Windows whisper.cpp engine and default model
+      - name: Install Windows whisper.cpp engine
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           ./scripts/install-whisper-assets.ps1 `
             -WhisperCppVersion "${{ env.WHISPER_CPP_VERSION }}" `
-            -Model "${{ env.DEFAULT_WHISPER_MODEL }}"
+            -Model "${{ env.DEFAULT_WHISPER_MODEL }}" `
+            -SkipModel
 
       - name: Build macOS universal binaries
         if: runner.os == 'macOS'
@@ -183,8 +245,28 @@ jobs:
           test -x engines/whisper-cli
           engines/whisper-cli --help >/dev/null
 
+      - name: Download reusable Whisper model
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODEL_RELEASE: ${{ env.WHISPER_MODEL_RELEASE }}
+          MODEL_ASSET: ggml-${{ env.DEFAULT_WHISPER_MODEL }}.bin
+        run: |
+          set +e
+          mkdir -p models
+          rm -f "models/$MODEL_ASSET"
+          gh release download "$MODEL_RELEASE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "$MODEL_ASSET" \
+            --dir models
+          status=$?
+          set -e
+
+          if [[ "$status" -ne 0 || ! -f "models/$MODEL_ASSET" ]]; then
+            echo "Reusable Whisper model download failed; falling back to install-whisper-model.ps1."
+          fi
+
       - name: Install default Whisper model
-        if: runner.os != 'Windows'
         shell: pwsh
         run: |
           ./scripts/install-whisper-model.ps1 `
@@ -275,10 +357,39 @@ jobs:
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
           DRAFT_RELEASE: ${{ steps.release.outputs.draft }}
         run: |
-          cat > release-notes.md <<EOF
+          generated_body="$(
+            gh api "repos/$GH_REPO/releases/generate-notes" \
+              --method POST \
+              -f tag_name="$RELEASE_TAG" \
+              -f target_commitish="$GITHUB_SHA" \
+              --jq .body || true
+          )"
+
+          {
+            if [[ -n "$generated_body" ]]; then
+              printf '%s\n\n' "$generated_body"
+            fi
+
+            cat <<'EOF' | sed \
+              -e "s/{{RELEASE_VERSION}}/$RELEASE_VERSION/g" \
+              -e "s/{{WHISPER_CPP_VERSION}}/$WHISPER_CPP_VERSION/g" \
+              -e "s/{{DEFAULT_WHISPER_MODEL}}/$DEFAULT_WHISPER_MODEL/g"
+          ## Install Locations
+
+          Local Dictate installs per user and does not require admin privileges.
+
+          - Windows: `%LOCALAPPDATA%\Programs\Local Dictate`
+          - Windows Start Menu shortcut: `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Local Dictate\Local Dictate.lnk`
+          - macOS: wherever you place `Local Dictate.app`; `/Applications/Local Dictate.app` is the usual shared app location, and `~/Applications/Local Dictate.app` is the per-user app location.
+          - Linux AppImage install root: `~/.local/share/local-dictate` by default, or `$XDG_DATA_HOME/local-dictate` when `XDG_DATA_HOME` is set.
+          - Linux installed AppImage: `~/.local/share/local-dictate/LocalDictate.AppImage`
+          - Linux FUSE-free extracted AppDir: `~/.local/share/local-dictate/AppDir`
+          - Linux launcher command: `~/.local/bin/local-dictate`
+          - Linux desktop entry: `~/.local/share/applications/local-dictate.desktop` by default, or `$XDG_DATA_HOME/applications/local-dictate.desktop` when `XDG_DATA_HOME` is set.
+
           ## Windows
 
-          Download `local-dictate-$RELEASE_VERSION-windows-x64.zip`, extract the zip, then run `Install-LocalDictate.ps1` from the extracted folder. The installer creates a per-user install, Start Menu shortcut, app icon, and shortcut description.
+          Download `local-dictate-{{RELEASE_VERSION}}-windows-x64.zip`, extract the zip, then run `Install-LocalDictate.ps1` from the extracted folder. The installer creates a per-user install, Start Menu shortcut, app icon, and shortcut description.
 
           To update an existing Windows install, download the new zip, extract it, and run `Install-LocalDictate.ps1` again. The installer replaces the installed app files and keeps user settings.
 
@@ -286,7 +397,7 @@ jobs:
 
           ## macOS
 
-          Download `local-dictate-$RELEASE_VERSION-macos-universal.zip`, extract the zip, then move `Local Dictate.app` to Applications or another folder you control.
+          Download `local-dictate-{{RELEASE_VERSION}}-macos-universal.zip`, extract the zip, then move `Local Dictate.app` to Applications or another folder you control.
 
           Launch `Local Dictate.app` from Finder. If macOS blocks the first launch, open System Settings, Privacy & Security, then allow the app and launch it again.
 
@@ -298,20 +409,20 @@ jobs:
 
           ### Portable AppImage
 
-          Download `local-dictate-$RELEASE_VERSION-linux-x64.AppImage`, make it executable, then run it directly. This path requires working FUSE support and does not add Local Dictate to your app launcher.
+          Download `local-dictate-{{RELEASE_VERSION}}-linux-x64.AppImage`, make it executable, then run it directly. This path requires working FUSE support and does not add Local Dictate to your app launcher.
 
           ```bash
-          chmod +x local-dictate-$RELEASE_VERSION-linux-x64.AppImage
-          ./local-dictate-$RELEASE_VERSION-linux-x64.AppImage
+          chmod +x local-dictate-{{RELEASE_VERSION}}-linux-x64.AppImage
+          ./local-dictate-{{RELEASE_VERSION}}-linux-x64.AppImage
           ```
 
           ### App Launcher Install
 
-          Download both `local-dictate-$RELEASE_VERSION-linux-x64.AppImage` and `local-dictate-$RELEASE_VERSION-linux-x64.install.sh` into the same folder. Make both files executable, then run the installer.
+          Download both `local-dictate-{{RELEASE_VERSION}}-linux-x64.AppImage` and `local-dictate-{{RELEASE_VERSION}}-linux-x64.install.sh` into the same folder. Make both files executable, then run the installer.
 
           ```bash
-          chmod +x local-dictate-$RELEASE_VERSION-linux-x64.AppImage local-dictate-$RELEASE_VERSION-linux-x64.install.sh
-          ./local-dictate-$RELEASE_VERSION-linux-x64.install.sh
+          chmod +x local-dictate-{{RELEASE_VERSION}}-linux-x64.AppImage local-dictate-{{RELEASE_VERSION}}-linux-x64.install.sh
+          ./local-dictate-{{RELEASE_VERSION}}-linux-x64.install.sh
           ```
 
           The installer creates a per-user install under `~/.local`, adds a desktop launcher, installs the app icon and metadata, and keeps using the AppImage/FUSE runtime.
@@ -323,17 +434,18 @@ jobs:
           Use this path if AppImage mounting is blocked or unavailable. It extracts the AppImage once, then installs the extracted AppDir into `~/.local`.
 
           ```bash
-          chmod +x local-dictate-$RELEASE_VERSION-linux-x64.AppImage
-          ./local-dictate-$RELEASE_VERSION-linux-x64.AppImage --appimage-extract
+          chmod +x local-dictate-{{RELEASE_VERSION}}-linux-x64.AppImage
+          ./local-dictate-{{RELEASE_VERSION}}-linux-x64.AppImage --appimage-extract
           ./squashfs-root/install-linux.sh --appdir ./squashfs-root
           ```
 
-          The Linux tarball `local-dictate-$RELEASE_VERSION-linux-x64.tar.gz` is also available for manual extraction and debugging; most users should use one of the AppImage paths above.
+          The Linux tarball `local-dictate-{{RELEASE_VERSION}}-linux-x64.tar.gz` is also available for manual extraction and debugging; most users should use one of the AppImage paths above.
 
           ## Included assets
 
-          Packages include the Local Dictate UI and CLI binaries, a bundled whisper.cpp $WHISPER_CPP_VERSION `whisper-cli` engine, the default $DEFAULT_WHISPER_MODEL ggml model, README, and project notices. No separate whisper.cpp or model setup is required for the default configuration.
+          Packages include the Local Dictate UI and CLI binaries, a bundled whisper.cpp {{WHISPER_CPP_VERSION}} `whisper-cli` engine, the default {{DEFAULT_WHISPER_MODEL}} ggml model, README, and project notices. No separate whisper.cpp or model setup is required for the default configuration.
           EOF
+          } > release-notes.md
 
           create_args=()
           if [[ "$DRAFT_RELEASE" == "true" ]]; then

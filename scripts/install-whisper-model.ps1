@@ -7,6 +7,45 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Invoke-DownloadWithRetry {
+    param(
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)][string]$OutFile,
+        [int]$MaxAttempts = 5
+    )
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt += 1) {
+        try {
+            Invoke-WebRequest -Uri $Uri -OutFile $OutFile
+            return
+        } catch {
+            if ($attempt -ge $MaxAttempts) {
+                throw
+            }
+
+            $statusCode = $null
+            if ($_.Exception.Response -and $_.Exception.Response.StatusCode) {
+                $statusCode = [int]$_.Exception.Response.StatusCode
+            }
+
+            $delaySeconds = if ($statusCode -eq 429) {
+                [Math]::Min(300, [int](15 * [Math]::Pow(2, $attempt - 1)))
+            } else {
+                [Math]::Min(60, 5 * $attempt)
+            }
+
+            $statusText = if ($statusCode) {
+                " HTTP $statusCode"
+            } else {
+                ""
+            }
+
+            Write-Warning "Download failed on attempt $attempt of $MaxAttempts.$statusText Retrying in $delaySeconds seconds."
+            Start-Sleep -Seconds $delaySeconds
+        }
+    }
+}
+
 $repoRoot = if ($Destination.Trim()) {
     [System.IO.Path]::GetFullPath($Destination)
 } else {
@@ -39,7 +78,7 @@ if (-not (Test-Path -LiteralPath $modelPath -PathType Leaf)) {
     }
 
     Write-Host "Downloading ggml model $Model from $modelUrl"
-    Invoke-WebRequest -Uri $modelUrl -OutFile $downloadPath
+    Invoke-DownloadWithRetry -Uri $modelUrl -OutFile $downloadPath
 
     $downloadHash = (Get-FileHash -Path $downloadPath -Algorithm SHA1).Hash.ToLowerInvariant()
     if ($downloadHash -ne $expectedHash) {
