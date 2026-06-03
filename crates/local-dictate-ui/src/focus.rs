@@ -1,4 +1,6 @@
+#[cfg(target_os = "windows")]
 use std::thread;
+#[cfg(target_os = "windows")]
 use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,6 +19,7 @@ pub fn restore_focus(target: Option<FocusTarget>) {
     }
 }
 
+#[cfg(target_os = "windows")]
 fn settle_after_restore() {
     thread::sleep(Duration::from_millis(80));
 }
@@ -145,7 +148,52 @@ mod platform {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "linux")]
+mod platform {
+    use super::FocusTarget;
+    use std::process::Command;
+    use std::thread;
+    use std::time::Duration;
+
+    pub fn current_focus_target() -> Option<FocusTarget> {
+        let window = xdotool_output(&["getactivewindow"])?;
+        let foreground_window = window.trim().parse::<isize>().ok()?;
+
+        if foreground_window <= 0 {
+            return None;
+        }
+
+        Some(FocusTarget {
+            foreground_window,
+            focused_control: None,
+        })
+    }
+
+    pub fn restore_focus(target: FocusTarget) {
+        if target.foreground_window <= 0 {
+            return;
+        }
+
+        let window = target.foreground_window.to_string();
+        let _ = Command::new("xdotool")
+            .args(["windowactivate", "--sync", &window])
+            .status();
+
+        thread::sleep(Duration::from_millis(120));
+    }
+
+    fn xdotool_output(args: &[&str]) -> Option<String> {
+        let output = Command::new("xdotool").args(args).output().ok()?;
+
+        if output.status.success() {
+            String::from_utf8(output.stdout).ok()
+        } else {
+            None
+        }
+    }
+}
+
+#[cfg(all(not(target_os = "linux"), not(target_os = "windows")))]
 mod platform {
     use super::FocusTarget;
 

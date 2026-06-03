@@ -2302,6 +2302,7 @@ dependencies = [
  "directories",
  "eframe",
  "enigo",
+ "gtk",
  "hound",
  "local-dictate-core",
  "serde",

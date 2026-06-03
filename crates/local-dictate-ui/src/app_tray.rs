@@ -19,6 +19,8 @@ impl fmt::Debug for AppTray {
 
 impl AppTray {
     pub fn new() -> Result<Self, String> {
+        initialize_platform_tray()?;
+
         let show_item = MenuItem::new("Show Local Dictate", true, None);
         let exit_item = MenuItem::new("Exit", true, None);
         let separator = PredefinedMenuItem::separator();
@@ -44,6 +46,8 @@ impl AppTray {
     }
 
     pub fn poll_action(&self) -> Option<TrayAction> {
+        poll_platform_tray_events();
+
         while let Ok(event) = MenuEvent::receiver().try_recv() {
             if event.id() == self.show_item.id() {
                 return Some(TrayAction::Show);
@@ -69,6 +73,26 @@ impl AppTray {
         None
     }
 }
+
+#[cfg(target_os = "linux")]
+fn initialize_platform_tray() -> Result<(), String> {
+    gtk::init().map_err(|error| error.to_string())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn initialize_platform_tray() -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn poll_platform_tray_events() {
+    while gtk::events_pending() {
+        gtk::main_iteration_do(false);
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn poll_platform_tray_events() {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayAction {

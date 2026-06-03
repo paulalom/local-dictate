@@ -19,3 +19,6 @@ tempfile = "3.27.0"
 toml = "1.1.2"
 tray-icon = "0.24.0"
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18.2"
