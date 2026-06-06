@@ -50,6 +50,8 @@ impl AppTray {
     }
 
     pub fn poll_action(&self) -> Option<TrayAction> {
+        poll_platform_tray_events();
+
         while let Ok(event) = MenuEvent::receiver().try_recv() {
             if event.id() == self.show_item.id() {
                 return Some(TrayAction::Show);
@@ -100,3 +102,13 @@ fn initialize_platform_tray() -> Result<(), String> {
 fn initialize_platform_tray() -> Result<(), String> {
     Ok(())
 }
+
+#[cfg(target_os = "linux")]
+fn poll_platform_tray_events() {
+    while gtk::events_pending() {
+        gtk::main_iteration_do(false);
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn poll_platform_tray_events() {}

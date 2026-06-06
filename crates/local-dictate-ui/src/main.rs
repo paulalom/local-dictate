@@ -1009,12 +1009,6 @@ struct CaptureContext {
     focus_target: Option<focus::FocusTarget>,
 }
 
-#[cfg(target_os = "linux")]
-fn initialize_app_tray() -> (Option<AppTray>, Option<String>) {
-    (None, None)
-}
-
-#[cfg(not(target_os = "linux"))]
 fn initialize_app_tray() -> (Option<AppTray>, Option<String>) {
     match AppTray::new() {
         Ok(tray) => (Some(tray), None),

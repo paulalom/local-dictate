@@ -83,7 +83,7 @@ fn default_true() -> bool {
 }
 
 fn default_hide_to_tray() -> bool {
-    !cfg!(target_os = "linux")
+    true
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -310,7 +310,7 @@ mod tests {
         assert!(config.cleanup_disfluencies);
         assert!(config.cleanup_revisions);
         assert!(config.append_trailing_space);
-        assert_eq!(config.hide_to_tray, !cfg!(target_os = "linux"));
+        assert!(config.hide_to_tray);
     }
 
     #[test]
@@ -331,7 +331,7 @@ keyword_swaps = []
         assert_eq!(config.model, "base.en");
         assert!(config.use_clipboard_insert);
         assert!(config.append_trailing_space);
-        assert_eq!(config.hide_to_tray, !cfg!(target_os = "linux"));
+        assert!(config.hide_to_tray);
         assert!(config.cleanup_disfluencies);
         assert!(config.cleanup_revisions);
         assert_eq!(config.engine_path, "engines/whisper-cli.exe");
