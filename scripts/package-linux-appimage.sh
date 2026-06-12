@@ -10,7 +10,7 @@ Usage: package-linux-appimage.sh \
   --linuxdeploy <path> \
   --appimagetool <path> \
   [--runtime-file <path>] \
-  [--default-model base.en]
+  [--default-model small.en]
 EOF
 }
 
@@ -20,7 +20,7 @@ output_dir="dist"
 linuxdeploy=""
 appimagetool=""
 runtime_file=""
-default_model="base.en"
+default_model="small.en"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

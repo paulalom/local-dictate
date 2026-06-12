@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 pub const DEFAULT_ENGINE_ID: &str = "bundled-whisper-cpp";
 pub const CUSTOM_ENGINE_ID: &str = "custom-whisper-cli";
-pub const DEFAULT_MODEL_ID: &str = "base.en";
+pub const DEFAULT_MODEL_ID: &str = "small.en";
 pub const CUSTOM_MODEL_ID: &str = "custom-ggml-model";
 
 const ASSET_ROOT_ENV: &str = "LOCAL_DICTATE_ASSET_DIR";
@@ -33,11 +33,11 @@ pub const MODEL_OPTIONS: &[AssetOption] = &[
         label: "Tiny English",
     },
     AssetOption {
-        id: DEFAULT_MODEL_ID,
+        id: "base.en",
         label: "Base English",
     },
     AssetOption {
-        id: "small.en",
+        id: DEFAULT_MODEL_ID,
         label: "Small English",
     },
     AssetOption {
@@ -377,7 +377,7 @@ mod tests {
     #[test]
     fn labels_known_defaults() {
         assert_eq!(engine_label(DEFAULT_ENGINE_ID), "Bundled whisper.cpp");
-        assert_eq!(model_file_name(DEFAULT_MODEL_ID), "ggml-base.en.bin");
+        assert_eq!(model_file_name(DEFAULT_MODEL_ID), "ggml-small.en.bin");
     }
 
     #[test]

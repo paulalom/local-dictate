@@ -221,7 +221,7 @@ mod tests {
             engine: DEFAULT_ENGINE_ID.to_string(),
             model: DEFAULT_MODEL_ID.to_string(),
             engine_path: "engines/whisper-cli.exe".to_string(),
-            model_path: "models/ggml-base.en.bin".to_string(),
+            model_path: "models/ggml-small.en.bin".to_string(),
             language: "en".to_string(),
             use_clipboard_insert: true,
             cleanup_disfluencies: true,
@@ -254,7 +254,7 @@ mod tests {
             engine: DEFAULT_ENGINE_ID.to_string(),
             model: DEFAULT_MODEL_ID.to_string(),
             engine_path: "engines/whisper-cli.exe".to_string(),
-            model_path: "models/ggml-base.en.bin".to_string(),
+            model_path: "models/ggml-small.en.bin".to_string(),
             language: "en".to_string(),
             use_clipboard_insert: true,
             cleanup_disfluencies: false,
@@ -299,11 +299,11 @@ mod tests {
     }
 
     #[test]
-    fn defaults_to_bundled_whisper_cpp_and_base_english() {
+    fn defaults_to_bundled_whisper_cpp_and_small_english() {
         let config = AppConfig::default();
 
         assert_eq!(config.engine, "bundled-whisper-cpp");
-        assert_eq!(config.model, "base.en");
+        assert_eq!(config.model, "small.en");
         assert!(config.engine_path.is_empty());
         assert!(config.model_path.is_empty());
         assert!(config.use_clipboard_insert);
@@ -328,7 +328,7 @@ keyword_swaps = []
         .unwrap();
 
         assert_eq!(config.engine, "bundled-whisper-cpp");
-        assert_eq!(config.model, "base.en");
+        assert_eq!(config.model, "small.en");
         assert!(config.use_clipboard_insert);
         assert!(config.append_trailing_space);
         assert!(config.hide_to_tray);
