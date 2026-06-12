@@ -213,6 +213,10 @@ pinned `whisper.cpp` CLI engine, then uploads:
 - `local-dictate-<version>-macos-universal.zip`
 - `local-dictate-<version>-linux-x64.tar.gz`
 
+The macOS package is currently untested and may not work because the maintainer
+does not currently have access to a Mac for validation. Pull requests that
+resolve macOS release or runtime issues are welcome.
+
 The Windows zip includes `Install-LocalDictate.ps1`, which installs or updates
 the app in a stable per-user location and creates the Start Menu shortcut.
 
