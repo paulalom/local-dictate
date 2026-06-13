@@ -716,7 +716,7 @@ impl SettingsApp {
                         .add_sized(
                             [ui.available_width(), 24.0],
                             egui::TextEdit::singleline(&mut self.model_path)
-                                .hint_text("models/ggml-small.en.bin"),
+                                .hint_text("models/ggml-base.en.bin"),
                         )
                         .changed()
                     {

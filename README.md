@@ -33,7 +33,7 @@ After placing a local `whisper-cli` binary and a local `ggml` model file on disk
 ```powershell
 cargo run -p local-dictate-cli -- `
   --engine .\engines\whisper-cli.exe `
-  --model .\models\ggml-small.en.bin `
+  --model .\models\ggml-base.en.bin `
   --audio .\recordings\sample.wav `
   --language en `
   --capture-hotkey Ctrl+Win `
@@ -61,7 +61,7 @@ for the current network boundary and the checked `whisper.cpp` engine runtime.
 
 ## Bundled Defaults
 
-The settings app defaults to the bundled `whisper.cpp` engine and the `small.en`
+The settings app defaults to the bundled `whisper.cpp` engine and the `base.en`
 Whisper model preset. Custom engine and model paths still work as advanced
 overrides, so developers can test GPU builds, newer upstream builds, or custom
 `ggml` models without changing the app contract.
@@ -80,7 +80,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-whisper-as
 
 That script downloads the pinned `whisper.cpp` Windows binary release, installs
 `whisper-cli.exe` and its DLL runtime files into `engines/`, and installs the
-`ggml-small.en.bin` model into `models/`. The model download is validated against
+`ggml-base.en.bin` model into `models/`. The model download is validated against
 the upstream SHA-1 listed by `whisper.cpp`.
 
 For local macOS and Linux release prep, build the pinned `whisper.cpp` engine
@@ -89,23 +89,23 @@ from source and install the default model with:
 ```powershell
 pwsh ./scripts/build-whisper-cpp.ps1 -Platform macos-universal
 pwsh ./scripts/build-whisper-cpp.ps1 -Platform linux-x64
-pwsh ./scripts/install-whisper-model.ps1 -Model small.en
+pwsh ./scripts/install-whisper-model.ps1 -Model base.en
 ```
 
 The engine build script installs the compatible `whisper-cli` binary to
-`engines/`. The model script installs `models/ggml-small.en.bin` and validates it
+`engines/`. The model script installs `models/ggml-base.en.bin` and validates it
 against the upstream SHA-1 listed by `whisper.cpp`.
 
 Fully bundled app builds should include:
 
 - `engines/whisper-cli.exe` on Windows, or `engines/whisper-cli` on macOS/Linux.
-- `models/ggml-small.en.bin` for the default English model.
+- `models/ggml-base.en.bin` for the default English model.
 - `THIRD_PARTY_NOTICES.md` with the app distribution.
 
 The GitHub release workflow publishes app packages for Windows, macOS, and
 Linux. Those packages include the Local Dictate UI and CLI binaries, a bundled
 `whisper.cpp` `whisper-cli` engine for the target operating system, the default
-`ggml-small.en.bin` model, README, and third-party notices. The default
+`ggml-base.en.bin` model, README, and third-party notices. The default
 configuration is runnable after extracting the package; custom model paths are
 only needed for non-default models.
 

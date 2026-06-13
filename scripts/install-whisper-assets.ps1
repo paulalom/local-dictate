@@ -1,7 +1,7 @@
 param(
     [string]$WhisperCppVersion = "v1.8.4",
     [ValidateSet("tiny.en", "base.en", "small.en", "base", "small")]
-    [string]$Model = "small.en",
+    [string]$Model = "base.en",
     [string]$Destination = "",
     [switch]$SkipModel
 )

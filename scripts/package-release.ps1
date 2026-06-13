@@ -14,7 +14,7 @@ param(
     [switch]$RequireEngine,
 
     [ValidateSet("tiny.en", "base.en", "small.en", "base", "small")]
-    [string]$DefaultModel = "small.en",
+    [string]$DefaultModel = "base.en",
 
     [switch]$RequireModel
 )

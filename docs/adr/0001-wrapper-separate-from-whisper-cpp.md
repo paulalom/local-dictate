@@ -17,7 +17,7 @@ Build `local-dictate` as a separate wrapper. Integrate `whisper.cpp` through a n
 The first implementation invokes a local `whisper-cli` executable as a child process with explicit arguments and no shell. A later implementation may link against the `whisper.cpp` C API for lower latency while preserving the same app-level contract.
 
 The product default is the bundled `whisper.cpp` CLI engine with a bundled or
-preinstalled `ggml-small.en.bin` model. Users can still provide custom
+preinstalled `ggml-base.en.bin` model. Users can still provide custom
 `whisper-cli` and `ggml` model paths for development, GPU builds, or model
 experiments.
 
