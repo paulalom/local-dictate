@@ -263,9 +263,12 @@ fn is_common_stutter_cluster(prefix: &str) -> bool {
 
 fn remove_filler_words(text: &str) -> String {
     let mut ranges = Vec::new();
+    let words = word_spans(text);
 
-    for word in word_spans(text) {
-        if is_filler_word(&text[word.start..word.end]) {
+    for (index, word) in words.iter().copied().enumerate() {
+        if is_filler_word(&text[word.start..word.end])
+            || is_contextual_like_filler(text, &words, index)
+        {
             ranges.push(expanded_filler_range(text, word));
         }
     }
@@ -278,6 +281,148 @@ fn is_filler_word(word: &str) -> bool {
         word.to_ascii_lowercase().as_str(),
         "ah" | "er" | "erm" | "hm" | "hmm" | "mm" | "uh" | "um"
     )
+}
+
+fn is_contextual_like_filler(text: &str, words: &[Span], index: usize) -> bool {
+    let word = words[index];
+
+    if !text[word.start..word.end].eq_ignore_ascii_case("like") {
+        return false;
+    }
+
+    let previous = index
+        .checked_sub(1)
+        .map(|previous_index| lowercase_word(text, words[previous_index]));
+    let next = words
+        .get(index + 1)
+        .map(|next_word| lowercase_word(text, *next_word));
+    let previous = previous.as_deref();
+    let next = next.as_deref();
+
+    if is_protected_like_context(previous, next) {
+        return false;
+    }
+
+    let has_soft_punctuation = previous_non_whitespace_char(text, word.start)
+        .is_some_and(is_soft_punctuation)
+        || next_non_whitespace_char(text, word.end).is_some_and(is_soft_punctuation);
+
+    if has_soft_punctuation {
+        return true;
+    }
+
+    previous.is_some_and(is_like_filler_lead_in)
+        && next.is_some_and(|next| !is_protected_like_follower(next))
+}
+
+fn is_protected_like_context(previous: Option<&str>, next: Option<&str>) -> bool {
+    previous.is_some_and(is_like_content_predecessor)
+        || previous.is_some_and(is_would_like_lead_in) && next == Some("to")
+}
+
+fn is_like_content_predecessor(word: &str) -> bool {
+    matches!(
+        word,
+        "about"
+            | "called"
+            | "filler"
+            | "fillers"
+            | "for"
+            | "of"
+            | "phrase"
+            | "removal"
+            | "term"
+            | "token"
+            | "word"
+            | "feel"
+            | "feeling"
+            | "feels"
+            | "felt"
+            | "look"
+            | "looked"
+            | "looking"
+            | "looks"
+            | "seem"
+            | "seemed"
+            | "seeming"
+            | "seems"
+            | "smell"
+            | "smelled"
+            | "smelling"
+            | "smells"
+            | "sound"
+            | "sounded"
+            | "sounding"
+            | "sounds"
+            | "taste"
+            | "tasted"
+            | "tasting"
+            | "tastes"
+    )
+}
+
+fn is_would_like_lead_in(word: &str) -> bool {
+    matches!(
+        word,
+        "could" | "couldn't" | "should" | "shouldn't" | "would" | "wouldn't"
+    )
+}
+
+fn is_like_filler_lead_in(word: &str) -> bool {
+    matches!(
+        word,
+        "and"
+            | "but"
+            | "or"
+            | "so"
+            | "can"
+            | "can't"
+            | "cannot"
+            | "could"
+            | "couldn't"
+            | "gonna"
+            | "gotta"
+            | "may"
+            | "might"
+            | "must"
+            | "should"
+            | "shouldn't"
+            | "will"
+            | "won't"
+            | "would"
+            | "wouldn't"
+    )
+}
+
+fn is_protected_like_follower(word: &str) -> bool {
+    matches!(
+        word,
+        "a" | "an"
+            | "her"
+            | "hers"
+            | "him"
+            | "his"
+            | "it"
+            | "its"
+            | "me"
+            | "my"
+            | "our"
+            | "that"
+            | "the"
+            | "their"
+            | "them"
+            | "these"
+            | "this"
+            | "those"
+            | "to"
+            | "us"
+            | "you"
+            | "your"
+    )
+}
+
+fn lowercase_word(text: &str, word: Span) -> String {
+    text[word.start..word.end].to_ascii_lowercase()
 }
 
 fn expanded_filler_range(text: &str, word: Span) -> Range<usize> {
@@ -730,6 +875,30 @@ fn next_char(text: &str, index: usize) -> Option<(usize, char)> {
         .map(|(offset, character)| (index + offset, character))
 }
 
+fn previous_non_whitespace_char(text: &str, mut index: usize) -> Option<char> {
+    while let Some((previous_index, character)) = previous_char(text, index) {
+        if !character.is_whitespace() {
+            return Some(character);
+        }
+
+        index = previous_index;
+    }
+
+    None
+}
+
+fn next_non_whitespace_char(text: &str, mut index: usize) -> Option<char> {
+    while let Some((next_index, character)) = next_char(text, index) {
+        if !character.is_whitespace() {
+            return Some(character);
+        }
+
+        index = next_index + character.len_utf8();
+    }
+
+    None
+}
+
 fn is_soft_punctuation(character: char) -> bool {
     matches!(character, ',' | ';' | ':')
 }
@@ -847,6 +1016,46 @@ mod tests {
     }
 
     #[test]
+    fn removes_contextual_like_fillers_when_cleanup_is_enabled() {
+        let settings = PostProcessingSettings::default().with_cleanup_disfluencies(true);
+
+        assert_eq!(
+            settings.apply(
+                "Can we improve the removal of fillers, or like focus on improving the removal of like when appropriate?"
+            ),
+            "Can we improve the removal of fillers, or focus on improving the removal of like when appropriate?"
+        );
+        assert_eq!(
+            settings.apply("I'm gonna like test the preview."),
+            "I'm gonna test the preview."
+        );
+        assert_eq!(
+            settings.apply("Like, we should ship this."),
+            "we should ship this."
+        );
+        assert_eq!(
+            settings.apply("I was, like, going to test this."),
+            "I was going to test this."
+        );
+    }
+
+    #[test]
+    fn keeps_content_like_uses_when_cleanup_is_enabled() {
+        let settings = PostProcessingSettings::default().with_cleanup_disfluencies(true);
+
+        assert_eq!(settings.apply("I like this."), "I like this.");
+        assert_eq!(settings.apply("It looks like this."), "It looks like this.");
+        assert_eq!(
+            settings.apply("I would like to test this."),
+            "I would like to test this."
+        );
+        assert_eq!(
+            settings.apply("Focus on the removal of like when appropriate."),
+            "Focus on the removal of like when appropriate."
+        );
+    }
+
+    #[test]
     fn collapses_repeated_phrases_when_cleanup_is_enabled() {
         let settings = PostProcessingSettings::default().with_cleanup_disfluencies(true);
 
@@ -891,7 +1100,7 @@ mod tests {
             settings.apply(
                 "This is now, I'm gonna like test, I want to test, I'm going to test this now."
             ),
-            "This is now, I'm gonna like test, I want to test, I'm going to test this now."
+            "This is now, I'm gonna test, I want to test, I'm going to test this now."
         );
     }
 
